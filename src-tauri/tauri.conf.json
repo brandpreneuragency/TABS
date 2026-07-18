@@ -60,6 +60,40 @@
         "name": "TABS Document",
         "description": "TABS document and task bundle",
         "role": "Editor"
+      },
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "txt"
+        ],
+        "name": "TABS Text Document",
+        "description": "Markdown or plain text document",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "webp",
+          "bmp"
+        ],
+        "name": "TABS Image",
+        "description": "Image file",
+        "role": "Viewer",
+        "mimeType": "image/jpeg"
+      },
+      {
+        "ext": [
+          "pdf"
+        ],
+        "name": "TABS PDF",
+        "description": "PDF document",
+        "role": "Viewer",
+        "mimeType": "application/pdf"
       }
     ],
     "icon": [

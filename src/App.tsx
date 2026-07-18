@@ -88,26 +88,54 @@ export default function App() {
     loadThemeTokens,
   ]);
 
-  // Listen for "open with TABS" / argv file events from the Tauri shell.
-  // This is a no-op in the browser — the dynamic import silently fails.
+  // Listen for "Open with TABS" / argv file events from the Tauri shell.
+  // Wait until workspaces are loaded so cold-start open does not race Dexie
+  // restore. Also pull any pending path stored at setup (event may fire before
+  // this listener is registered). No-op in the browser.
   useEffect(() => {
+    if (!docsLoaded) return;
+
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     void (async () => {
       try {
-        // Only attempt to subscribe if Tauri runtime is actually present.
         if (!('__TAURI_INTERNALS__' in window)) return;
-        const mod = await import('@tauri-apps/api/event');
-        unlisten = await mod.listen<string>('tabs://open-file', (e) => {
+
+        const openPath = (payload: string) => {
+          const path = payload.trim();
+          if (!path) return;
+          void useWorkspaceStore.getState().openFileByPath(path);
+        };
+
+        const [{ listen }, { invoke }] = await Promise.all([
+          import('@tauri-apps/api/event'),
+          import('@tauri-apps/api/core'),
+        ]);
+        if (cancelled) return;
+
+        unlisten = await listen<string>('tabs://open-file', (e) => {
           const payload = typeof e.payload === 'string' ? e.payload : '';
-          if (!payload) return;
-          void useWorkspaceStore.getState().openFileByPath(payload);
+          openPath(payload);
         });
+
+        // Recover cold-start path if the setup emit raced the listener.
+        try {
+          const pending = await invoke<string | null>('take_pending_open_file');
+          if (!cancelled && typeof pending === 'string' && pending) {
+            openPath(pending);
+          }
+        } catch {
+          // Older desktop builds without the command — ignore.
+        }
       } catch {
         // Not running in Tauri — ignore.
       }
     })();
-    return () => { if (unlisten) unlisten(); };
-  }, []);
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, [docsLoaded]);
 
   // Keyboard shortcut: Ctrl/Cmd + Shift + T toggles task mode
   useEffect(() => {

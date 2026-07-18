@@ -15,12 +15,13 @@ import type { Workspace, WorkspaceFile, ConnectedFolderRef, FileViewerItem } fro
 import { db } from '../services/db';
 import { useUIStore } from './uiStore';
 import { parseByExt, serialize } from '../services/fileFormat';
-import { isTextFile, isImageFile } from '../utils/fileType';
-import { decodeDataUrlText } from '../utils/fileData';
+import { isTextFile, isImageFile, isPdfFile } from '../utils/fileType';
+import { bytesToDataUrl, decodeDataUrlText, mimeTypeFromPath } from '../utils/fileData';
 import {
   openFolderDialog,
   readDir,
   readTextFile,
+  readBinaryFile,
   writeTextFile,
   mkdir,
   remove as fsRemove,
@@ -161,15 +162,20 @@ async function loadSubtree(
   return { node: { ...node, children: sortNodes(loadedChildren) }, changed: true };
 }
 
+function normalizePathSlashes(fullPath: string): string {
+  return fullPath.replace(/\\/g, '/');
+}
+
 function getParentFullPath(fullPath: string): string {
-  const idx = fullPath.lastIndexOf('/');
-  if (idx !== -1) return fullPath.slice(0, idx);
+  const norm = normalizePathSlashes(fullPath);
+  const idx = norm.lastIndexOf('/');
+  if (idx !== -1) return norm.slice(0, idx);
   // Remote scheme top-level: "atlas:file.md" → "atlas:" (not the path itself).
-  const colon = fullPath.indexOf(':');
-  if (colon > 0 && colon < fullPath.length - 1) {
-    return fullPath.slice(0, colon + 1);
+  const colon = norm.indexOf(':');
+  if (colon > 0 && colon < norm.length - 1) {
+    return norm.slice(0, colon + 1);
   }
-  return fullPath;
+  return norm;
 }
 
 function validateName(name: string, siblings: TreeNode[]): string | null {
@@ -597,24 +603,55 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return false;
     }
 
-    // Read and parse the file
-    if (!isTextFile(node.name)) {
+    const fullPath = normalizePathSlashes(node.fullPath);
+
+    // PDFs open in the side file viewer (not TipTap).
+    if (isPdfFile(node.name)) {
+      try {
+        const bytes = await readBinaryFile(fullPath);
+        const dataUrl = bytesToDataUrl(bytes, 'application/pdf');
+        useUIStore.getState().openFileViewer({
+          name: node.name,
+          path: fullPath,
+          dataUrl,
+          mimeType: 'application/pdf',
+          source: 'filesystem',
+        });
+        get().updateWorkspace(workspaceId, { selectedTreePath: node.path });
+        return true;
+      } catch {
+        toast(`Could not read file: ${node.name}`);
+        return false;
+      }
+    }
+
+    if (!isTextFile(node.name) && !isImageFile(node.name)) {
       toast(`Unsupported file type for editor: .${node.name.split('.').pop() ?? ''}`);
       return false;
     }
 
     try {
-      const ext = node.name.split('.').pop()?.toLowerCase() ?? '';
-      const text = await readTextFile(node.fullPath);
       let json: object;
-      try {
-        json = parseByExt(text, ext);
-      } catch {
-        json = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
+      if (isImageFile(node.name)) {
+        const bytes = await readBinaryFile(fullPath);
+        const mime = mimeTypeFromPath(node.name);
+        const dataUrl = bytesToDataUrl(bytes, mime);
+        json = {
+          type: 'doc',
+          content: [{ type: 'image', attrs: { src: dataUrl } }],
+        };
+      } else {
+        const ext = node.name.split('.').pop()?.toLowerCase() ?? '';
+        const text = await readTextFile(fullPath);
+        try {
+          json = parseByExt(text, ext);
+        } catch {
+          json = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
+        }
       }
 
       const newFile: WorkspaceFile = {
-        path: node.fullPath,
+        path: fullPath,
         name: node.name,
         content: JSON.stringify(json),
         isDirty: false,
@@ -1104,29 +1141,36 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   // ── Tauri shell integration ──
 
   openFileByPath: async (path) => {
-    // Find a workspace that has the file's parent folder connected
-    const workspaces = get().workspaces;
-    const parentPath = path.substring(0, path.lastIndexOf('/'));
-    const name = path.split('/').pop() ?? 'Untitled';
+    // Windows Open With passes backslashes; app paths use forward slashes.
+    const fullPath = normalizePathSlashes(path.trim());
+    if (!fullPath) return;
 
-    // Look for a workspace with a matching connected folder
+    const name = basename(fullPath);
+    const parentPath = getParentFullPath(fullPath);
+    const workspaces = get().workspaces;
+
+    const node: TreeNode = { name, path: name, fullPath, kind: 'file' };
+
+    // Prefer a workspace that already has the parent folder connected.
     for (const ws of workspaces) {
       const folders = getConnectedFolders(ws);
-      const matchingFolder = folders.find((f) => f.path === parentPath || parentPath.startsWith(f.path + '/'));
+      const matchingFolder = folders.find((f) => {
+        const folderPath = normalizePathSlashes(f.path);
+        return folderPath === parentPath || parentPath.startsWith(folderPath + '/');
+      });
       if (matchingFolder) {
         get().setActiveWorkspace(ws.id);
-        const node: TreeNode = { name, path: name, fullPath: path, kind: 'file' };
         await get().swapFileInWorkspace(ws.id, node, { skipPrompt: true });
         return;
       }
     }
 
-    // No matching workspace — create a new one with the parent folder
+    // No matching workspace — create a new one and attach the parent folder
+    // when the path has a parent directory (drive roots still open the file).
     const newWs = await get().createWorkspace();
-    if (isNativeFsAvailable()) {
+    if (isNativeFsAvailable() && parentPath && parentPath !== fullPath) {
       await get().connectFolderInWorkspace(newWs.id, parentPath);
     }
-    const node: TreeNode = { name, path: name, fullPath: path, kind: 'file' };
     await get().swapFileInWorkspace(newWs.id, node, { skipPrompt: true });
   },
 

@@ -1,3 +1,47 @@
+/** Convert raw bytes to a base64 string (chunked to avoid call-stack limits). */
+export function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/** Build a data URL from raw bytes and a MIME type. */
+export function bytesToDataUrl(bytes: Uint8Array, mimeType: string): string {
+  return `data:${mimeType};base64,${uint8ToBase64(bytes)}`;
+}
+
+/** Best-effort MIME type from a file name/path extension. */
+export function mimeTypeFromPath(pathOrName: string): string {
+  const ext = pathOrName.split(/[\\/]/).pop()?.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'bmp':
+      return 'image/bmp';
+    case 'svg':
+      return 'image/svg+xml';
+    case 'pdf':
+      return 'application/pdf';
+    case 'md':
+    case 'markdown':
+      return 'text/markdown';
+    case 'txt':
+      return 'text/plain';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
 export function decodeDataUrlText(dataUrl: string): string {
   if (!dataUrl.startsWith('data:')) {
     return dataUrl;
