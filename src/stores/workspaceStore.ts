@@ -169,13 +169,7 @@ function normalizePathSlashes(fullPath: string): string {
 function getParentFullPath(fullPath: string): string {
   const norm = normalizePathSlashes(fullPath);
   const idx = norm.lastIndexOf('/');
-  if (idx !== -1) return norm.slice(0, idx);
-  // Remote scheme top-level: "atlas:file.md" → "atlas:" (not the path itself).
-  const colon = norm.indexOf(':');
-  if (colon > 0 && colon < norm.length - 1) {
-    return norm.slice(0, colon + 1);
-  }
-  return norm;
+  return idx === -1 ? norm : norm.slice(0, idx);
 }
 
 function validateName(name: string, siblings: TreeNode[]): string | null {
@@ -223,6 +217,30 @@ export function getEditorStateCache() {
 
 export function clearEditorStateCache(path: string) {
   editorStateCache.delete(path);
+}
+
+// ── Untitled drafts (empty workspace buffer, IndexedDB only) ──
+// When the user pastes/types into a workspace with no open disk file, content
+// is kept under a stable virtual path so it can persist via Dexie and so each
+// workspace has its own editor identity (new tabs start blank).
+const DRAFT_PATH_PREFIX = '__draft__:';
+
+/** Stable virtual path for a workspace's unsaved editor buffer. */
+export function draftPathForWorkspace(workspaceId: string): string {
+  return `${DRAFT_PATH_PREFIX}${workspaceId}`;
+}
+
+/** True when the path is an IndexedDB-only draft (not a real disk file). */
+export function isDraftPath(path: string | null | undefined): boolean {
+  return !!path && path.startsWith(DRAFT_PATH_PREFIX);
+}
+
+/** True when Save must open a file explorer (no real disk path yet). */
+export function needsSaveAsDialog(path: string | null | undefined): boolean {
+  if (!path || isDraftPath(path)) return true;
+  const n = path.replace(/\\/g, '/');
+  // Absolute Windows (C:/...) or POSIX (/...) path required for direct write.
+  return !(n.startsWith('/') || /^[A-Za-z]:\//.test(n));
 }
 
 function evictEditorCacheIfNeeded() {
@@ -677,6 +695,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const ws = get().workspaces.find((w) => w.id === workspaceId);
     if (!ws?.currentFile) return;
 
+    // No real disk path yet (draft / empty workspace / unconnected save):
+    // always open the native Save explorer so the user can pick a location.
+    if (needsSaveAsDialog(ws.currentFile.path)) {
+      await get().saveAsCurrentFile(workspaceId);
+      return;
+    }
+
     const editorJson = (() => {
       try { return JSON.parse(ws.currentFile.content) as object; } catch { return { type: 'doc', content: [] }; }
     })();
@@ -698,7 +723,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (updated) void persistWorkspace(updated);
     } catch (err) {
       console.warn('[Save] disk write failed:', err);
-      toast(`Failed to save: ${getErrorMessage(err)}`);
+      // Fall back to Save As (e.g. path gone) so content is not stuck.
+      try {
+        await get().saveAsCurrentFile(workspaceId);
+      } catch {
+        toast(`Failed to save: ${getErrorMessage(err)}`);
+      }
     }
   },
 
@@ -716,6 +746,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       { name: 'Text File', extensions: ['txt'] },
     ];
     const suggestedName = `${base}.md`;
+    // Prefer the connected folder when present; still works with none —
+    // the native dialog opens with just the suggested file name.
     const activeFolder = getConnectedFolders(ws).find((f) => f.id === ws.activeFolderId);
     const defaultDir = activeFolder?.rootNode?.fullPath;
     try {
@@ -724,10 +756,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         filters,
         defaultDir ? joinPath(defaultDir, suggestedName) : suggestedName
       );
-      if (!newPath) return;
+      if (!newPath) return; // user cancelled
       const ext = getExt(newPath) || 'md';
       await writeTextFile(newPath, serialize(editorJson, ext));
-      const newName = newPath.split('/').pop() ?? ws.currentFile.name;
+      const newName = newPath.split(/[/\\]/).pop() ?? ws.currentFile.name;
+      const prevPath = ws.currentFile.path;
+      // Keep undo/selection when promoting a draft path to a real file path.
+      if (prevPath !== newPath) {
+        const cached = editorStateCache.get(prevPath);
+        if (cached) {
+          editorStateCache.set(newPath, cached);
+          editorStateCache.delete(prevPath);
+        }
+      }
       set((s) => ({
         workspaces: s.workspaces.map((w) =>
           w.id === workspaceId && w.currentFile
@@ -739,16 +780,35 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (updated) void persistWorkspace(updated);
     } catch (err) {
       console.warn('[SaveAs] failed:', err);
+      toast(`Failed to save: ${getErrorMessage(err)}`);
     }
   },
 
   updateFileContent: (workspaceId, content, isDirty) => {
     set((s) => ({
-      workspaces: s.workspaces.map((w) =>
-        w.id === workspaceId && w.currentFile
-          ? { ...w, currentFile: { ...w.currentFile, content, isDirty }, updatedAt: Date.now() }
-          : w
-      ),
+      workspaces: s.workspaces.map((w) => {
+        if (w.id !== workspaceId) return w;
+        if (w.currentFile) {
+          return {
+            ...w,
+            currentFile: { ...w.currentFile, content, isDirty },
+            updatedAt: Date.now(),
+          };
+        }
+        // Empty workspace: promote paste/type into an IndexedDB draft so
+        // content survives app close. Path is stable per workspace so the
+        // TipTap fileId does not change mid-edit.
+        return {
+          ...w,
+          currentFile: {
+            path: draftPathForWorkspace(workspaceId),
+            name: 'Untitled',
+            content,
+            isDirty: true,
+          },
+          updatedAt: Date.now(),
+        };
+      }),
     }));
     // Persist to Dexie (best-effort, not on every keystroke — the caller
     // debounces via useAutoSave)
@@ -810,11 +870,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   // ── Folder operations within workspace ──
 
   connectFolderInWorkspace: async (workspaceId, fullPath) => {
-    // fullPath is set by the VPS root picker (RemoteFolderConnector.connectRoot).
-    // Native/browser pickers leave it undefined and use openFolderDialog instead.
-    // Do not gate remote paths on isNativeFsAvailable() — tabs_api has no showDirectoryPicker.
+    // fullPath is optional (e.g. re-open a known path). Native/browser pickers
+    // leave it undefined and use openFolderDialog instead.
     if (!fullPath && !isNativeFsAvailable()) {
-      // Still allow when tabs_api selected RemoteFolderConnector (isAvailable always true).
       const connector = await getFolderConnector();
       if (!connector.isAvailable()) {
         const message =

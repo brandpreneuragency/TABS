@@ -161,10 +161,7 @@ pub fn run() {
             focus_main_window(app.handle());
 
             // Register Ctrl+Shift+Space as the "focus TABS" global hotkey.
-            let shortcut = Shortcut::new(
-                Some(Modifiers::CONTROL | Modifiers::SHIFT),
-                Code::Space,
-            );
+            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
             if let Err(e) = app.global_shortcut().register(shortcut) {
                 eprintln!("[TABS] Failed to register Ctrl+Shift+Space: {e}");
             }

@@ -118,5 +118,7 @@ pub fn ai_file_edit(
         raw.replacen(&old, &new, 1)
     };
     fs::write(&full, updated).map_err(|e| format!("write failed: {e}"))?;
-    Ok(FileEditResult { replacements: count })
+    Ok(FileEditResult {
+        replacements: count,
+    })
 }

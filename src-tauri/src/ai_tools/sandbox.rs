@@ -115,10 +115,7 @@ mod tests {
         fs::write(root.join("sub/deep/b.txt"), b"world").unwrap();
         // Symlink inside the workspace pointing at a file inside it.
         #[cfg(windows)]
-        let _ = std::os::windows::fs::symlink_file(
-            root.join("a.txt"),
-            root.join("link.txt"),
-        );
+        let _ = std::os::windows::fs::symlink_file(root.join("a.txt"), root.join("link.txt"));
         #[cfg(unix)]
         let _ = std::os::unix::fs::symlink(root.join("a.txt"), root.join("link.txt"));
         (dir, root)

@@ -17,9 +17,18 @@ export function useAutoSave(
       timerRef.current = setTimeout(() => {
         const json = JSON.stringify(editor.getJSON());
         const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === workspaceId);
-        const file = ws?.currentFile;
+        if (!ws) return;
+
+        const file = ws.currentFile;
+        // Empty workspace: first non-empty edit becomes an IndexedDB draft.
+        if (!file) {
+          if (editor.isEmpty) return;
+          updateFileContent(workspaceId, json, true);
+          return;
+        }
+
         // Skip if content is unchanged — avoids false dirty from non-edit updates
-        if (!file || file.content === json) return;
+        if (file.content === json) return;
         updateFileContent(workspaceId, json, true);
       }, 300);
     };

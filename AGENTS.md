@@ -7,87 +7,78 @@ This file applies to the entire repository. It defines the default working rules
 Follow instructions in this order:
 
 1. The user's current request and explicit approvals.
-2. The active canonical plan, specification, or handoff named by the user.
+2. Named plans or specs the user points to for the current task.
 3. This file.
 4. Existing repository conventions.
 
-Do not revive requirements from deleted or superseded plans. If current code and a named source of truth disagree, inspect branch history and ask only when the intended behavior cannot be determined safely.
+Do not revive deleted Hermes, VPS, `server/`, `deploy/`, or hosted-web requirements from git history unless the user explicitly asks to restore them.
+
+## Product source of truth
+
+TABS is a **local desktop application** built with Tauri.
+
+- User data, documents, tasks, CRM data, settings, agents, and AI-provider credentials are handled locally.
+- There is **no** hosted TABS web application, VPS filesystem, Hermes Gateway, remote session service, Docker deployment, Caddy configuration, or server-side TABS API.
+- **Vite/browser mode** (`npm run dev`) is a development preview only — not a supported production runtime.
+- Production packaging and day-to-day use target the Windows Tauri desktop app.
+
+Keep the React UI separate from Tauri service adapters. Feature code should go through `src/services/` (runtime, folder connectors, FS adapter, HTTP helpers) rather than importing `@tauri-apps/*` directly in components.
 
 ## Required start-up checks
 
 Before editing:
 
 1. Run `git status --short` and inspect relevant diffs. This repository may contain substantial user WIP.
-2. Read the named plan, spec, handoff, and progress tracker before implementation.
-3. Read every file you intend to change and search all references to affected symbols, selectors, commands, persisted keys, and types.
-4. Identify which runtime is in scope: browser/Vite, Tauri desktop, deployed web, Node service, or more than one.
-5. Confirm the acceptance criteria and verification commands for the active scope.
+2. Read every file you intend to change and search all references to affected symbols, selectors, commands, persisted keys, and types.
+3. Identify which runtime is in scope: Tauri desktop (primary) or browser/Vite (dev preview only).
+4. Confirm acceptance criteria and verification commands for the active scope.
 
-Use `rg` and `rg --files` for repository searches. Do not infer system behavior from a single component.
-
-## Current phased program
-
-The current repository program is **TABS Web on VPS as Hermes Client**.
-
-- Entry point: `docs/MASTER_PLAN.md`
-- Progress tracker: `docs/PROGRESS.md`
-- Canonical implementation plan: `docs/superpowers/plans/2026-07-16-tabs-vps-hermes-client.md`
-- Phase handoffs: `docs/CODEX_HANDOFF/`
-
-When working on that program:
-
-1. Read `docs/PROGRESS.md`, then `docs/MASTER_PLAN.md`.
-2. Determine the next incomplete phase.
-3. Read only the canonical plan task mapped to that phase, plus directly referenced material needed to execute it.
-4. Implement only that phase. Do not pull later-phase work forward.
-5. Run its acceptance criteria, update `docs/PROGRESS.md`, and follow the phase's explicit commit/push instructions.
-
-Do not mark a phase complete when any required check is failing or unverified. Record deviations and facts needed by the next phase tersely and factually.
+Use `rg` for repository searches. Do not infer system behavior from a single component.
 
 ## Repository map
 
 - `src/components/<area>/`: React feature and shared UI components.
 - `src/stores/`: Zustand state and persisted application state.
-- `src/services/`: runtime adapters, persistence, AI providers, filesystem access, search, and external integrations.
+- `src/services/`: runtime adapters, persistence, AI providers, filesystem access, search.
 - `src/hooks/`: shared React behavior.
 - `src/types/`: cross-feature TypeScript contracts.
 - `src/i18n/`: English and Turkish UI strings.
 - `src/styles/` and feature CSS files: tokens, shell layout, and scoped feature styles.
 - `src-tauri/src/`: Rust desktop commands, AI tools, tray, and terminal backend.
 - `src-tauri/capabilities/`: Tauri permission scopes.
-- `server/`: deployed Node service when introduced by the active plan.
-- `deploy/`: deployment assets when introduced by the active plan.
-- `docs/`: plans, specifications, progress, and handoffs.
 
 Generated or runtime data is not source: `node_modules/`, `dist/`, `src-tauri/target/`, and `src-tauri/TASKS/`.
 
+Do **not** reintroduce `server/`, `deploy/`, Hermes clients/stores, remote folder connectors, or `tabsApi` unless explicitly requested.
+
 ## Runtime and architecture rules
 
-TABS has multiple runtime paths. A browser preview is not proof that Tauri behavior works, and a local desktop build is not proof that the deployed web path works.
-
-- Vite development uses port `1420` with a strict port setting.
-- Keep runtime detection and runtime-specific behavior in service/adaptor layers. Reuse `src/services/runtime.ts`, `src/services/http.ts`, and the `FolderConnector` abstraction instead of importing Tauri APIs into feature UI.
+- Primary runtime: Tauri desktop → `TauriFolderConnector`.
+- Dev preview: browser → `BrowserFolderConnector` (File System Access API). No remote connector fallback.
+- Keep runtime detection in `src/services/runtime.ts` and FS access behind `src/services/fs-adapter.ts` / `FolderConnector`.
 - Browser-only features must degrade safely when native APIs are unavailable.
-- Tauri command changes must stay aligned across Rust command registration, frontend invocation, and `src-tauri/capabilities/default.json` permissions.
-- Preserve stable component identity for editors, chat, forms, and selections; avoid keys or conditional branches that remount stateful UI accidentally.
-- Put shared state invariants in Zustand actions rather than duplicating them in event handlers. Use narrow selectors in large components.
-- Follow existing Dexie patterns for persisted settings and provide deliberate migration/fallback behavior when keys change.
+- Tauri command changes must stay aligned across Rust registration, frontend invocation, and `src-tauri/capabilities/default.json`.
+- Preserve stable component identity for editors, AI sidebar chat, forms, and selections.
+- Put shared state invariants in Zustand actions. Use narrow selectors in large components.
+- Follow existing Dexie patterns for persisted settings; migrate or delete obsolete keys deliberately (e.g. ignore/delete stale `chatMode`).
+
+Shell workspace modes are local only: Documents, Tasks, CRM (including Forms), Settings, plus Terminal. The AI Assistant sidebar’s `SidebarTab = 'chat'` is the local multi-provider assistant — not a Hermes workspace.
 
 ## Implementation conventions
 
 ### TypeScript and React
 
-- Strict TypeScript is enabled. Do not hide errors with `any`, `@ts-ignore`, or broad casts.
+- Strict TypeScript is enabled. Do not hide errors with `any`, `@ts-expect-error` without cause, or broad casts.
 - Prefer small, explicit types and pure helpers for logic that can be unit tested.
 - Keep feature components in their existing area and shared primitives under `src/components/ui/`.
-- Preserve accessibility: semantic controls, keyboard behavior, visible focus, accurate labels, and ARIA state where native semantics are insufficient.
-- Add or update Vitest tests for non-trivial logic and regressions. Tests are colocated as `*.test.ts` or `*.test.tsx` under `src/`.
-- When user-facing copy changes, update both `src/i18n/en.ts` and `src/i18n/tr.ts` unless the text is intentionally not localized.
+- Preserve accessibility: semantic controls, keyboard behavior, visible focus, accurate labels.
+- Add or update Vitest tests for non-trivial logic and regressions (`*.test.ts` / `*.test.tsx` under `src/`).
+- When user-facing copy changes, update both `src/i18n/en.ts` and `src/i18n/tr.ts` unless intentionally unlocalized.
 
 ### Styling
 
 - Reuse tokens from `src/styles/tokens.css` and existing feature classes before adding new values.
-- Keep structural styles in scoped feature CSS rather than large inline style objects; inline values are appropriate for truly dynamic geometry or CSS custom properties.
+- Keep structural styles in scoped feature CSS; inline styles only for dynamic geometry or CSS variables.
 - Audit `min-width: 0`, `min-height: 0`, overflow ownership, and responsive behavior when changing nested layouts.
 - Remove obsolete selectors when their final use is removed, but do not perform unrelated global CSS cleanup.
 
@@ -96,37 +87,23 @@ TABS has multiple runtime paths. A browser preview is not proof that Tauri behav
 - Keep commands focused and return actionable errors without leaking sensitive data.
 - Update capability scopes narrowly; never broaden filesystem, shell, or HTTP permissions merely to make a failing call pass.
 - Run Rust formatting and compile checks when Rust or Tauri configuration changes.
-- Distinguish the local debug executable from the installed application when diagnosing desktop behavior. Stop stale development processes before rebuilding a locked executable.
+- Distinguish the local debug executable from the installed application when diagnosing desktop behavior.
 
-### Node service and deployment
+## Security
 
-- Follow the canonical plan for the `server/` and `deploy/` architecture; do not invent protocol fields or deployment topology.
-- Server code is ESM (`.mjs`). Put testable logic in pure modules under `server/lib/`.
-- Keep secrets in environment files that are ignored by Git. Never commit credentials, tokens, password hashes, or production `.env` files.
-
-## Security and operations
-
-- Never print API keys, access tokens, session tokens, password hashes, secure-storage values, or `.env` contents in commands, logs, tests, diffs, or chat.
-- Do not modify reference-only Hermes sources. They are evidence for protocol discovery, not part of this repository.
-- For the current VPS plan, use non-interactive SSH exactly as documented in the canonical plan.
-- Keep `tabs_api` bound to loopback. Never expose ports `4010`, `9119`, or `8642` publicly.
-- Preserve the existing Atlas and Wagner Atelier sites when changing Caddy or deployment assets.
-- Recreating or changing the Hermes container for the session token requires the user's exact in-session approval specified by the phase. Prior approval for a different destructive step does not transfer.
-- Before any destructive operation, verify the target, capture the required evidence, and confirm that the active phase explicitly authorizes it. Stop on unexpected infrastructure state.
+- Never print API keys, access tokens, secure-storage values, or `.env` contents in commands, logs, tests, diffs, or chat.
+- Provider credentials and local data stay on the user’s machine; do not add cloud sync or remote credential bridges unless explicitly requested.
 
 ## Scope and repository safety
 
 - Make the smallest coherent change that satisfies the active request.
-- Preserve unrelated modifications and untracked files. If user WIP overlaps a target file, patch around it and call out any unavoidable conflict.
-- Do not add or upgrade dependencies unless the task requires it and no existing dependency or platform API fits.
-- Do not create worktrees, delegate work, or broaden the phase unless explicitly requested.
-- Do not commit or push unless the user request or an active, user-approved phase explicitly requires it.
-- Never run destructive Git commands such as `git reset --hard`, `git clean -fd`, bulk `git restore`, or force-push without explicit user authorization.
-- Do not weaken TypeScript, ESLint, tests, Tauri capabilities, authentication, or filesystem guards to make a check pass.
+- Preserve unrelated modifications and untracked files.
+- Do not add or upgrade dependencies unless the task requires it and no existing dependency fits.
+- Do not commit or push unless the user explicitly asks.
+- Never run destructive Git commands (`git reset --hard`, `git clean -fd`, bulk `git restore`, force-push) without explicit authorization.
+- Do not weaken TypeScript, ESLint, tests, or Tauri capabilities to make a check pass.
 
 ## Verification
-
-Use the narrowest checks during iteration, then run the full gate required by the scope.
 
 Frontend/full code gate:
 
@@ -134,29 +111,20 @@ Frontend/full code gate:
 npm run check
 ```
 
-This runs typecheck, lint, Vitest, and the production build. If `server/` changed, also run its tests as specified by the active plan (normally `cd server; npm test`).
-
-For Rust or Tauri changes, additionally run from `src-tauri/` as appropriate:
+For Rust or Tauri changes, from `src-tauri/`:
 
 ```powershell
 cargo fmt --check
 cargo check
 ```
 
-Run `cargo test` when Rust behavior has unit coverage. Use `npm run tauri:build` only when packaging is part of the acceptance criteria; it is heavier than a compile check.
-
-Documentation-only changes do not require the full build gate. Inspect the rendered structure, links, and `git diff --check` instead.
-
-Manual verification must name the runtime and path tested. Report browser preview, local Tauri debug, installed desktop, and deployed web checks separately. Never claim a command or flow passed unless it was actually run.
+Use `npm run tauri:build` when packaging is part of acceptance. Report browser preview and Tauri desktop results separately. Never claim a command passed unless it was actually run.
 
 ## Handoff format
 
-End implementation work with a concise factual report containing:
+End implementation work with:
 
-- Summary and files changed.
-- Behavior implemented and compatibility/migration notes.
-- Commands run and exact results.
-- Manual checks, including the runtime used.
-- Remaining risks, unverified paths, and the next phase when applicable.
-
-Findings come before summaries on review tasks. Do not advance progress or mark completion until the stated pass gate is met.
+- Summary and files changed
+- Behavior and migration notes
+- Commands run and exact results
+- Remaining risks or unverified paths

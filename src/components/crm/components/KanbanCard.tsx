@@ -58,7 +58,7 @@ export function KanbanCard({ deal, contact, company, onClick, onEdit, isActive }
       <div className="crm-kanban-card-drag" title="Drag to move">
         <GripVertical size={12} />
       </div>
-      <div className="crm-kanban-card-header">
+      <div className="crm-kanban-card-title-zone">
         <span className="crm-kanban-card-title">{deal.title}</span>
         {onEdit && (
           <button
@@ -76,8 +76,10 @@ export function KanbanCard({ deal, contact, company, onClick, onEdit, isActive }
           </button>
         )}
       </div>
-      <div className="crm-kanban-card-value">{formatValue(deal.value, deal.currency)}</div>
-      <div className="crm-kanban-card-meta">
+      <div className="crm-kanban-card-primary">
+        <div className="crm-kanban-card-value">{formatValue(deal.value, deal.currency)}</div>
+      </div>
+      <div className="crm-kanban-card-footer">
         <span className="crm-kanban-card-meta-item">
           <Building2 size={11} />
           <span className="trunc">{companyLabel}</span>
@@ -90,12 +92,12 @@ export function KanbanCard({ deal, contact, company, onClick, onEdit, isActive }
           <CalendarDays size={11} />
           <span>{formatDate(deal.expectedCloseDate)}</span>
         </span>
+        {deal.tags.length > 0 && (
+          <div className="crm-kanban-card-tags">
+            <TagChips tags={deal.tags} max={2} />
+          </div>
+        )}
       </div>
-      {deal.tags.length > 0 && (
-        <div className="crm-kanban-card-tags">
-          <TagChips tags={deal.tags} max={2} />
-        </div>
-      )}
     </div>
   );
 }

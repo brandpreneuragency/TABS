@@ -349,8 +349,6 @@ const tr = {
     noFoldersConnected: 'Bağlı klasör yok',
     desktopRequired: 'Masaüstü uygulaması gerekli',
     desktopRequiredHint: 'Klasör bağlamak için TABS masaüstü uygulamasını kullanın. Klasör erişimi tarayıcıda kullanılamaz.',
-    noRemoteRoots: 'VPS klasörü yok',
-    connectRemoteRoot: '{{label}} bağla',
   },
   clearChat: {
     label: 'Temizle',

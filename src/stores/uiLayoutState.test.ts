@@ -67,18 +67,6 @@ describe('selectCanSwapWrappers', () => {
 });
 
 describe('selectActiveWorkspaceMode', () => {
-  it('resolves chat over documents', () => {
-    expect(
-      selectActiveWorkspaceMode({
-        chatMode: true,
-        taskMode: false,
-        crmMode: false,
-        activeCRMPage: 'leads',
-        activeView: 'document',
-      }),
-    ).toBe('chat');
-  });
-
   it('resolves tasks over documents', () => {
     expect(
       selectActiveWorkspaceMode({

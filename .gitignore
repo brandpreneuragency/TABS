@@ -42,7 +42,6 @@ src-tauri/TASKS/
 .env
 .env.local
 .env.production
-deploy/.env
 secrets/
 secrets/*.conf
 

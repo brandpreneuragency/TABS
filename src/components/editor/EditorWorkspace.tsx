@@ -4,7 +4,7 @@ import { TipTapEditor } from './TipTapEditor';
 import { BlockInsertMenu } from './BlockInsertMenu';
 import { SelectionToolbar } from './SelectionToolbar';
 import { EditorTopBar } from './EditorTopBar';
-import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { draftPathForWorkspace, useWorkspaceStore } from '../../stores/workspaceStore';
 import { useSaveDocument } from '../../hooks/useSaveDocument';
 import { useUIStore } from '../../stores/uiStore';
 import { editorRef } from '../../stores/editorRef';
@@ -49,6 +49,11 @@ export function EditorWorkspace({ onEditorReady }: EditorWorkspaceProps) {
   const rainbowMode = useUIStore((s) => s.rainbowMode);
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
   const currentFile = activeWs?.currentFile ?? null;
+  // Stable per-workspace id so empty tabs do not share one editor buffer
+  // (new workspace → fresh empty editor; draft path matches autosave).
+  const editorFileId =
+    currentFile?.path
+    || (activeWorkspaceId ? draftPathForWorkspace(activeWorkspaceId) : null);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const saveDocument = useSaveDocument();
 
@@ -97,29 +102,59 @@ export function EditorWorkspace({ onEditorReady }: EditorWorkspaceProps) {
         ref={editorScrollRef}
         className="panel-body ai-scroll flex-1 overflow-y-a editor-pane"
         style={{ padding: '6px 60px' }}
-        onClick={(e) => {
-          if (!localEditor) return;
-          const editorDom = localEditor.view.dom;
-          if (editorDom.contains(e.target as Node)) return;
+        onMouseDown={(e) => {
+          // Empty-canvas clicks on the scroll pane (padding, gutters, space
+          // below content). Place the caret on the nearest line — never force
+          // focus('end') for side clicks, which jumps to the last line and
+          // scrolls #scroll-main to the bottom.
+          if (!localEditor || e.button !== 0) return;
 
-          // Left/right gutter clicks and selection drags that end outside
-          // the editor must not jump the caret to the document end (that
-          // scrolls #scroll-main to the bottom). Only empty space below
-          // the content should focus the end.
+          const scrollEl = e.currentTarget;
+          // Don't steal scrollbar interaction.
+          if (
+            e.clientX >= scrollEl.clientWidth + scrollEl.getBoundingClientRect().left
+            || e.clientY >= scrollEl.clientHeight + scrollEl.getBoundingClientRect().top
+          ) {
+            return;
+          }
+
+          const target = e.target as HTMLElement;
+          if (target.closest('textarea, input, button, a, [role="menu"], .block-insert-overlay')) return;
+
+          const editorDom = localEditor.view.dom;
+          if (editorDom.contains(target)) return;
+
+          // Preserve a drag-selection that ended outside the editor.
           const { from, to } = localEditor.state.selection;
           if (from !== to) return;
 
           const rect = editorDom.getBoundingClientRect();
-          if (e.clientY <= rect.bottom) return;
+          // Side gutter: map Y onto the nearest line. Below content: doc end.
+          const clampedX = Math.min(
+            Math.max(e.clientX, rect.left + 1),
+            Math.max(rect.left + 1, rect.right - 1),
+          );
+          const clampedY = Math.min(
+            Math.max(e.clientY, rect.top + 1),
+            Math.max(rect.top + 1, rect.bottom - 1),
+          );
+          const coords =
+            e.clientY > rect.bottom
+              ? null
+              : localEditor.view.posAtCoords({ left: clampedX, top: clampedY });
 
           e.preventDefault();
-          localEditor.commands.focus('end');
+          if (coords) {
+            localEditor.chain().focus().setTextSelection(coords.pos).run();
+          } else {
+            localEditor.commands.focus('end');
+          }
         }}
       >
         <div style={{ margin: 0, padding: 0, width: '100%' }}>
           <div style={{ display: htmlViewOpen ? 'none' : 'block', width: '100%' }}>
             <TipTapEditor
-              fileId={currentFile?.path ?? null}
+              fileId={editorFileId}
               workspaceId={activeWorkspaceId}
               initialContent={currentFile?.content ?? ''}
               onEditorReady={handleEditorReady}

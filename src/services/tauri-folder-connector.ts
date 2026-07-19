@@ -137,10 +137,14 @@ export class TauriFolderConnector implements FolderConnector {
     defaultPath?: string,
     filters: DialogFilter[] = [{ name: 'All Files', extensions: ['*'] }],
   ): Promise<string | null> {
-    return await dialogSave({
-      defaultPath: defaultPath ? join(defaultPath, suggestedName) : suggestedName,
+    // Callers pass either a bare file name ("Untitled.md") or a full file path
+    // ("C:/notes/Untitled.md"). Do not re-join with suggestedName — that breaks
+    // Save As when no workspace folder is connected (filename-only default).
+    const result = await dialogSave({
+      defaultPath: defaultPath || suggestedName,
       filters,
     });
+    return typeof result === 'string' ? normalize(result) : null;
   }
 
   async pickOpenFile(

@@ -16,8 +16,6 @@ import { TrashModal } from './components/modals/TrashModal';
 import { ModelSwitcher } from './components/ui/ModelSwitcher';
 import { ToastContainer } from './components/ui/Toast';
 import { CRMWorkspace } from './components/layout/CRMWorkspace';
-import { ChatWorkspace } from './components/chatMode/ChatWorkspace';
-import { SessionListColumn } from './components/chatMode/SessionListColumn';
 import { CRMListPanel } from './components/crm/CRMListPanel';
 import { FormsListPanel } from './components/forms/FormsListPanel';
 import { CRMAISidebar } from './components/sidebar/CRMAISidebar';
@@ -43,7 +41,6 @@ export default function App() {
     activeTaskId,
     activeTaskPage,
     setTaskMode,
-    chatMode,
     crmMode,
     activeCRMPage,
     activeFormsPage,
@@ -194,14 +191,12 @@ export default function App() {
 
   const effectiveTaskId = activeTaskId ?? storeActiveTaskId;
 
-  // The Settings doc only lives in doc mode (not task/crm/chat).
-  const settingsActive = !taskMode && !crmMode && !chatMode && activeView === 'settings';
+  // The Settings doc only lives in doc mode (not task/crm).
+  const settingsActive = !taskMode && !crmMode && activeView === 'settings';
 
-  // Panel 2 (editor) — CHAT > CRM > task > doc. Settings primary content is
+  // Panel 2 (editor) — CRM > task > doc. Settings primary content is
   // owned by AppLayout (SettingsDocument → section slots).
-  const activeWorkspace = chatMode
-    ? <ChatWorkspace />
-    : crmMode
+  const activeWorkspace = crmMode
     ? <CRMWorkspace />
     : taskMode
     ? activeTaskPage === 'projects'
@@ -211,12 +206,10 @@ export default function App() {
     ? null
     : <EditorWorkspace onEditorReady={handleEditorReady} />;
 
-  // Panel 1 (leftPanel) — session list / CRM / Forms / file explorer.
+  // Panel 1 (leftPanel) — CRM / Forms / file explorer.
   // Settings supplies its own list via SettingsPanels inside SettingsDocument.
   const formsPageActive = crmMode && activeCRMPage === 'forms';
-  const leftPanel = chatMode
-    ? <SessionListColumn />
-    : crmMode
+  const leftPanel = crmMode
     ? formsPageActive
       ? <FormsListPanel />
       : <CRMListPanel />
@@ -237,15 +230,7 @@ export default function App() {
     embedState: formsPageActive && (activeFormsPage === 'builder' || activeFormsPage === 'list') ? activeFormStatus : null,
   };
 
-  const sidebar = chatMode
-    ? (
-      <AISidebar
-        workspaceId={null}
-        taskId={null}
-        editor={null}
-      />
-    )
-    : crmMode
+  const sidebar = crmMode
     ? <CRMAISidebar crmContext={crmContext} />
     : settingsActive
     ? (

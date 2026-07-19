@@ -1,20 +1,9 @@
 // CRM + Forms Dexie persistence.
 //
-// DESIGN CHOICE — companion database:
-// The app's primary Dexie db (`ZenEditorDB` in src/services/db.ts) is owned by
-// another agent and must not be edited. Dexie's version semantics drop any
-// object store that is omitted from a new version's `stores()` declaration, so
-// opening `ZenEditorDB` from this file at a higher version with only CRM/forms
-// tables would DELETE the existing documents/tasks/projects tables.
-//
-// Per the data-agent instructions ("or a clearly-named companion db"), we open
-// a SEPARATE IndexedDB database named `ZenEditorCRMFormsDB`. This keeps the
-// CRM/forms data isolated and avoids any risk to the existing db. The class
-// structure, version chain, `Table<T>!` declarations, and index style match
-// the existing `ZenEditorDB` pattern exactly so a future merge is trivial.
-//
-// A future VPS agent can replace this adapter with an API client without
-// touching UI/store code.
+// Companion database: the primary app DB (`TabsDB` / IndexedDB `ZenEditorDB`
+// in src/services/db.ts) must not gain CRM tables in-place — Dexie drops any
+// object store omitted from a new version's `stores()` declaration.
+// IndexedDB name stays `ZenEditorCRMFormsDB` for existing installs.
 
 import Dexie, { type Table } from 'dexie';
 import type {
@@ -40,7 +29,8 @@ export interface CRMSettingsRecord {
   value: string | number | boolean | Record<string, unknown>;
 }
 
-class ZenEditorCRMFormsDB extends Dexie {
+/** CRM/Forms companion DB. IndexedDB name stays `ZenEditorCRMFormsDB` for existing installs. */
+class TabsCRMFormsDB extends Dexie {
   crmLeads!: Table<CRMLead, string>;
   crmContacts!: Table<CRMContact, string>;
   crmCompanies!: Table<CRMCompany, string>;
@@ -81,7 +71,7 @@ class ZenEditorCRMFormsDB extends Dexie {
   }
 }
 
-export const crmFormsDb = new ZenEditorCRMFormsDB();
+export const crmFormsDb = new TabsCRMFormsDB();
 
 // ---------------------------------------------------------------------------
 // Settings helpers (mirror the getSetting/setSetting pattern from db.ts)

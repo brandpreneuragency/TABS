@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::mpsc;
 
 use grep_regex::RegexMatcherBuilder;
-use grep_searcher::Searcher;
 use grep_searcher::sinks::UTF8;
+use grep_searcher::Searcher;
 
 use crate::ai_tools::sandbox::resolve_in_workspace;
 
@@ -27,10 +27,7 @@ pub fn ai_glob(
         Some(p) => resolve_in_workspace(root, &p)?,
         None => root.to_path_buf(),
     };
-    let full_pattern = base
-        .join(&pattern)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let full_pattern = base.join(&pattern).to_string_lossy().replace('\\', "/");
 
     let mut out: Vec<String> = Vec::new();
     for entry in glob::glob(&full_pattern).map_err(|e| format!("bad glob: {e}"))? {

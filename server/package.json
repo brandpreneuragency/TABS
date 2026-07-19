@@ -1,7 +1,0 @@
-{
-  "name": "tabs-api",
-  "private": true,
-  "type": "module",
-  "scripts": { "start": "node index.mjs", "test": "node --test \"lib/**/*.test.mjs\"" },
-  "dependencies": { "http-proxy": "^1.18.1" }
-}

@@ -331,8 +331,6 @@ const en = {
     noFoldersConnected: 'No folders connected',
     desktopRequired: 'Desktop app required',
     desktopRequiredHint: 'Connect a folder from the TABS desktop app. Folder access is not available in the browser.',
-    noRemoteRoots: 'No VPS folders available',
-    connectRemoteRoot: 'Connect {{label}}',
   },
   contextWindow: {
     title: 'Context Window',

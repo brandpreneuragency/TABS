@@ -7,7 +7,8 @@ export interface FileHandleRecord {
   path: string;
 }
 
-class ZenEditorDB extends Dexie {
+/** Primary app DB. IndexedDB name stays `ZenEditorDB` for existing installs. */
+class TabsDB extends Dexie {
   /** @deprecated Replaced by workspaces in v12. */
   documents!: Table<Document>;
   workspaces!: Table<Workspace>;
@@ -211,7 +212,7 @@ class ZenEditorDB extends Dexie {
   }
 }
 
-export const db = new ZenEditorDB();
+export const db = new TabsDB();
 
 export async function getSetting<T>(key: string, defaultValue: T): Promise<T> {
   const row = await db.settings.get(key);

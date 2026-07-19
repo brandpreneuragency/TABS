@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   FolderPlus,
   GripVertical,
+  List,
   ListTodo,
   Plus,
   Users,
@@ -15,6 +16,7 @@ import './taskDetail.css';
 import { dateOptions } from './taskMetadataUtils';
 import { useTaskStore } from '../../stores/taskStore';
 import { useProjectStore } from '../../stores/projectStore';
+import { useUIStore } from '../../stores/uiStore';
 import { KPICard, CRMEmptyState } from '../crm/components';
 import type { Task } from '../../types';
 
@@ -59,6 +61,8 @@ interface TaskKanbanCardProps {
 
 function TaskKanbanCard({ task, isActive, onClick }: TaskKanbanCardProps) {
   const updateTask = useTaskStore((s) => s.updateTask);
+  const openTaskInActiveTab = useTaskStore((s) => s.openTaskInActiveTab);
+  const setActiveTaskPage = useUIStore((s) => s.setActiveTaskPage);
   const [isDragging, setIsDragging] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const dateRef = useRef<HTMLDivElement>(null);
@@ -79,6 +83,12 @@ function TaskKanbanCard({ task, isActive, onClick }: TaskKanbanCardProps) {
     e.dataTransfer.setData('text/plain', task.id);
     e.dataTransfer.setData('application/x-task-card', task.id);
     setIsDragging(true);
+  };
+
+  const handleOpenInList = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveTaskPage('list');
+    openTaskInActiveTab(task.id);
   };
 
   return (
@@ -109,10 +119,20 @@ function TaskKanbanCard({ task, isActive, onClick }: TaskKanbanCardProps) {
       >
         <GripVertical size={12} />
       </div>
-      <div className="crm-kanban-card-header">
+      <div className="crm-kanban-card-title-zone">
         <span className="crm-kanban-card-title">{task.title}</span>
+        <button
+          type="button"
+          className="crm-kanban-card-edit"
+          title="Open in List"
+          aria-label="Open in List"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={handleOpenInList}
+        >
+          <List size={12} />
+        </button>
       </div>
-      <div className="crm-kanban-card-meta">
+      <div className="crm-kanban-card-primary">
         <div
           ref={dateRef}
           className="tdp-meta-field"
@@ -147,13 +167,15 @@ function TaskKanbanCard({ task, isActive, onClick }: TaskKanbanCardProps) {
             </div>
           )}
         </div>
-        {task.assignees.length > 0 && (
+      </div>
+      {task.assignees.length > 0 && (
+        <div className="crm-kanban-card-footer">
           <span className="crm-kanban-card-meta-item">
             <Users size={11} />
             <span className="trunc">{task.assignees.length}</span>
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

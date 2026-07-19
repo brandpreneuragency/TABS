@@ -8,7 +8,6 @@ const CONTEXT_PANEL_NOUN: Record<WorkspaceMode, string> = {
   crm: 'CRM list',
   forms: 'Forms list',
   settings: 'Settings list',
-  chat: 'session list',
 };
 
 interface ContextPanelToggleProps {

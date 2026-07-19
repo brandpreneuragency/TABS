@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 use std::thread::JoinHandle;
 
 use base64::Engine;
-use portable_pty::{Child, MasterPty, native_pty_system, PtySize};
+use portable_pty::{native_pty_system, Child, MasterPty, PtySize};
 use tauri::{AppHandle, Emitter};
 
 /// A single PTY-backed shell session.
@@ -95,7 +95,9 @@ impl PtySession {
         self.writer
             .write_all(data)
             .map_err(|e| format!("write failed: {e}"))?;
-        self.writer.flush().map_err(|e| format!("flush failed: {e}"))
+        self.writer
+            .flush()
+            .map_err(|e| format!("flush failed: {e}"))
     }
 
     /// Resize the PTY.

@@ -82,7 +82,5 @@ fn kill_process(pid: u32) {
 
 #[cfg(not(windows))]
 fn kill_process(pid: u32) {
-    let _ = Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .output();
+    let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
 }

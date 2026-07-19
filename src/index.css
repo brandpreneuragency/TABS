@@ -3846,11 +3846,16 @@ button.calendar-task-row {
   font-weight: 400;
 }
 
-/*TIPTAP EDITOR (BASE)*/
+/*TIPTAP EDITOR (BASE)
+ * Height must follow content, not the scroll viewport. A full-height
+ * contenteditable maps empty clicks (below the last paragraph) to the
+ * document end, so the caret always jumps to the last line.
+ */
 :root .tiptap-editor {
   outline: none;
   background: var(--c-background-1);
-  height: 100%;
+  height: auto;
+  min-height: 0;
   --inline-preset-h1-size: calc(var(--fs-base) + 6px);
   --inline-preset-h2-size: calc(var(--fs-base) + 4px);
   --inline-preset-h3-size: calc(var(--fs-base) + 2px);

@@ -107,13 +107,13 @@ Recommended new shell components (owned by the Layout agent):
 
 ## 4. Dexie persistence — `src/services/db.ts`
 
-`ZenEditorDB extends Dexie`, db name `'ZenEditorDB'`, singleton `export const db = new ZenEditorDB()`. Versioned via `this.version(N).stores({ tableName: 'indexed,fields,here' })`. Current version = **9**. Settings table is `'key'`-indexed KV: `db.settings.put({key, value})` / `db.settings.get(key)`.
+`TabsDB extends Dexie`, IndexedDB name `'ZenEditorDB'` (legacy id for existing installs), singleton `export const db = new TabsDB()`. Versioned via `this.version(N).stores({ tableName: 'indexed,fields,here' })`. Current version = **9**. Settings table is `'key'`-indexed KV: `db.settings.put({key, value})` / `db.settings.get(key)`.
 
 ### CRM/Forms persistence decision
 
 The Data Model agent creates a **separate companion Dexie DB** (e.g. class `TabsCrmFormsDB extends Dexie`, name `'TabsCrmFormsDB'`) rather than editing `db.ts`, to avoid touching the existing DB and risking Doc/Task data. CRM/Forms tables: `crmLeads, crmContacts, crmCompanies, crmDeals, crmActivities, crmNotes, crmTaskLinks, crmSavedViews, forms, formSubmissions, formTemplates, formWebhooks` — indexed on `id` + key query fields. Seed only when empty.
 
-**Downstream agents must NEVER import `db` (ZenEditorDB) for CRM/Forms data.** Always go through `crmService` / `formsService` / `submissionService` / `embedService`, which abstract the companion DB. This keeps a clean swap path to a future VPS API.
+**Downstream agents must NEVER import `db` (TabsDB) for CRM/Forms data.** Always go through `crmService` / `formsService` / `submissionService` / `embedService`, which abstract the companion DB.
 
 (If a future agent prefers a single DB, adding `this.version(10).stores({...})` to `db.ts` with the CRM/Forms tables is the clean alternative — but it is NOT required for MVP and touching `db.ts` adds risk to existing modes.)
 
@@ -246,7 +246,7 @@ link submission → leadId / contactId / companyId
 - `src/components/layout/AppLayout.tsx` — 3-panel shell + visibility guards.
 - `src/components/layout/LeftNarrowSidebar.tsx` — module switcher.
 - `src/stores/uiStore.ts` — all UI state + setters + `loadUISettings`.
-- `src/services/db.ts` — Dexie `ZenEditorDB` (do not use for CRM/Forms data; use the companion DB via services).
+- `src/services/db.ts` — Dexie `TabsDB` (do not use for CRM/Forms data; use the companion DB via services).
 - `src/components/sidebar/AISidebar.tsx` — Panel 3 reference structure.
 - `src/components/sidebar/RightPanelSubheader.tsx` — Panel 3 subheader.
 - `src/components/taskManager/TaskListPanel.tsx` + `taskList.css` — Panel 1 list pattern.

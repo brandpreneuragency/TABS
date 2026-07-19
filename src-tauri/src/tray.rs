@@ -21,8 +21,13 @@ use tauri_plugin_notification::NotificationExt;
 
 pub fn build(app: &tauri::AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Show TABS", true, None::<&str>)?;
-    let test =
-        MenuItem::with_id(app, "test_notification", "Test Notification", true, None::<&str>)?;
+    let test = MenuItem::with_id(
+        app,
+        "test_notification",
+        "Test Notification",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &test, &quit])?;
 
@@ -106,4 +111,3 @@ fn load_tray_icon(app: &tauri::AppHandle) -> Option<Image<'static>> {
     }
     None
 }
-

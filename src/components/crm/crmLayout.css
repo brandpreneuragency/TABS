@@ -3,7 +3,28 @@
  * Imported once by CRMListPanel and CRMWorkspace.
  * Reuses global design tokens — no token redefinitions,
  * no edits to global CSS. Prefixed with `crm-*`.
+ * Matches Task list panel shell language (soft, borderless).
  * ========================================================= */
+
+/* Panel 1 shell — align with #task-list-panel */
+#crm-list-panel {
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  gap: 0;
+}
+
+#crm-list-panel .crm-list-content {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+}
 
 /* Panel 1 — empty state */
 .crm-list-search-btn {
@@ -19,6 +40,7 @@
   color: var(--c-text-2);
   cursor: pointer;
   border-radius: 8px;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .crm-list-search-btn:hover {
@@ -33,13 +55,16 @@
   justify-content: center;
   text-align: center;
   padding: 24px 16px;
+  background: transparent;
 }
 
-/* Panel 1 — footer + quick add */
+/* Panel 1 — footer + quick add (Task quick-create soft fill) */
 .crm-list-footer {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  padding: 8px 12px 12px;
+  background: transparent;
+  border: none;
 }
 
 .crm-list-add-btn {
@@ -48,20 +73,20 @@
   gap: 6px;
   width: 100%;
   height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--c-border-1);
+  padding: 0 12px;
+  border: none;
   outline: none;
-  background: var(--c-background-1);
+  background: var(--c-background-2);
   color: var(--c-text-1);
   font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: border-color 0.15s, color 0.15s;
+  border-radius: 8px;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .crm-list-add-btn:hover {
-  border-color: var(--c-accent-center-panel);
+  background: color-mix(in srgb, var(--c-background-2) 80%, var(--c-text-1) 10%);
   color: var(--c-accent-center-panel);
 }
 
@@ -70,16 +95,10 @@
   color: var(--c-text-2);
 }
 
-/* Stub page helpers (overwritten by later CRM page agents) */
-.crm-page {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+/* Stub page helpers (primary rules live in crm.css) */
 .crm-page-title {
   font-size: var(--fs-base);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--c-text-1);
   margin: 0;
 }

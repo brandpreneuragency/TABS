@@ -4,6 +4,8 @@
 // current runtime. This is the ONLY place that imports @tauri-apps/api/core
 // for the purpose of adapter selection. UI code should never import
 // @tauri-apps directly.
+//
+// Local-only: Tauri desktop → native FS; browser → File System Access API.
 
 import type { FolderConnector } from './folder-connector';
 import { BrowserFolderConnector } from './browser-folder-connector';
@@ -30,13 +32,7 @@ export async function getFolderConnector(): Promise<FolderConnector> {
     const { TauriFolderConnector } = await import('./tauri-folder-connector');
     _connector = new TauriFolderConnector();
   } else {
-    const { tabsApi } = await import('./tabsApi');
-    if (await tabsApi.available()) {
-      const { RemoteFolderConnector } = await import('./remote-folder-connector');
-      _connector = new RemoteFolderConnector();
-    } else {
-      _connector = new BrowserFolderConnector();
-    }
+    _connector = new BrowserFolderConnector();
   }
 
   return _connector;
