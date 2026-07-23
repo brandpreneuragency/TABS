@@ -708,6 +708,55 @@ describe('custom model CRUD', () => {
     const updated = useAIStore.getState().providerConfigs.find((p) => p.id === 'test-provider-1')!;
     expect(updated.selectedModel).toBe('');
   });
+
+  it('removeModelFromProvider clears the hiddenModels key for the removed model', () => {
+    const provider = makeProvider({
+      customModels: ['custom-a'],
+      models: [
+        ...(makeProvider().models ?? []),
+        {
+          id: 'custom-a',
+          name: 'custom-a',
+          enabled: true,
+          custom: true,
+          capabilities: { vision: false, toolCalling: true, contextLength: 'Unknown', speed: 'Unknown', cost: 'Unknown', reasoning: 'Unknown', endpointType: 'Custom', lastSynced: 'Unknown' },
+        },
+      ],
+    });
+    seedProviders([provider]);
+    seedHiddenModels(['test-provider-1:custom-a', 'other:model']);
+
+    useAIStore.getState().removeModelFromProvider('test-provider-1', 'custom-a');
+
+    expect(useAIStore.getState().hiddenModels).toEqual(['other:model']);
+  });
+});
+
+describe('setProviderModelsHidden', () => {
+  it('hides all models for a provider without touching other providers', () => {
+    seedProviders([makeProvider()]);
+    seedHiddenModels(['other:model']);
+
+    useAIStore.getState().setProviderModelsHidden('test-provider-1', true);
+
+    const hidden = useAIStore.getState().hiddenModels;
+    expect(hidden).toContain('other:model');
+    expect(hidden).toContain('test-provider-1:gpt-4o');
+    expect(hidden).toContain('test-provider-1:gpt-4o-mini');
+  });
+
+  it('shows all models for a provider', () => {
+    seedProviders([makeProvider()]);
+    seedHiddenModels([
+      'test-provider-1:gpt-4o',
+      'test-provider-1:gpt-4o-mini',
+      'other:model',
+    ]);
+
+    useAIStore.getState().setProviderModelsHidden('test-provider-1', false);
+
+    expect(useAIStore.getState().hiddenModels).toEqual(['other:model']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -795,6 +844,34 @@ describe('getEnabledModels', () => {
 
     const enabled = useAIStore.getState().getEnabledModels('test-provider-1');
     expect(enabled).toHaveLength(0);
+  });
+});
+
+describe('refreshProviderStatus', () => {
+  it('recovers from connection_failed when key and models exist', async () => {
+    seedProviders([makeProvider({ status: 'connection_failed' })]);
+    await secureStorage.secureSet('providerApiKey_test-provider-1', 'sk-test-123');
+
+    await useAIStore.getState().refreshProviderStatus('test-provider-1');
+
+    const updated = useAIStore.getState().providerConfigs.find((p) => p.id === 'test-provider-1')!;
+    expect(updated.status).toBe('connected');
+  });
+
+  it('keeps connection_failed when models are still missing', async () => {
+    seedProviders([
+      makeProvider({
+        status: 'connection_failed',
+        models: [],
+        selectedModel: '',
+      }),
+    ]);
+    await secureStorage.secureSet('providerApiKey_test-provider-1', 'sk-test-123');
+
+    await useAIStore.getState().refreshProviderStatus('test-provider-1');
+
+    const updated = useAIStore.getState().providerConfigs.find((p) => p.id === 'test-provider-1')!;
+    expect(updated.status).toBe('connection_failed');
   });
 });
 

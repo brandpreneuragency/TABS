@@ -37,9 +37,33 @@ export function mimeTypeFromPath(pathOrName: string): string {
       return 'text/markdown';
     case 'txt':
       return 'text/plain';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     default:
       return 'application/octet-stream';
   }
+}
+
+/** Decode a data URL payload to raw bytes (base64 or percent-encoded). */
+export function decodeDataUrlBytes(dataUrl: string): Uint8Array {
+  if (!dataUrl.startsWith('data:')) {
+    throw new Error('Invalid data URL.');
+  }
+
+  const firstComma = dataUrl.indexOf(',');
+  if (firstComma === -1) {
+    throw new Error('Invalid data URL.');
+  }
+
+  const metadata = dataUrl.slice(0, firstComma);
+  const payload = dataUrl.slice(firstComma + 1);
+
+  if (/;base64/i.test(metadata)) {
+    const binary = atob(payload);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  }
+
+  return new TextEncoder().encode(decodeURIComponent(payload));
 }
 
 export function decodeDataUrlText(dataUrl: string): string {

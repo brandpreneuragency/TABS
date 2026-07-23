@@ -98,14 +98,19 @@ function refreshStatus(
   selectedModel: string,
   currentStatus?: ProviderStatus,
 ): ProviderStatus {
-  if (currentStatus === 'connection_failed') return 'connection_failed';
-  return deriveProviderStatus({
+  const derived = deriveProviderStatus({
     hasBaseUrl,
     hasKey,
     modelCount,
     selectedModel,
     currentStatus,
   });
+  // Keep a prior failure visible until the provider is actually usable again.
+  // Once key + models + selection exist, facts win over a stale failure flag.
+  if (currentStatus === 'connection_failed' && derived !== 'connected') {
+    return 'connection_failed';
+  }
+  return derived;
 }
 
 async function hasSecureKey(providerId: string): Promise<boolean> {
@@ -154,6 +159,7 @@ interface AIStore {
   removeModelFromProvider: (configId: string, modelSlug: string) => void;
   toggleHiddenModel: (key: string) => void;
   setModelHidden: (providerId: string, modelId: string, hidden: boolean) => void;
+  setProviderModelsHidden: (providerId: string, hidden: boolean) => void;
   setHiddenModels: (keys: string[]) => void;
   isModelHidden: (configId: string, modelSlug: string) => boolean;
 
@@ -700,12 +706,16 @@ export const useAIStore = create<AIStore>((set, get) => ({
     const models = (current.models ?? []).filter((m) => m.id !== modelSlug);
     const selectedModel =
       current.selectedModel === modelSlug ? (models[0]?.id ?? '') : current.selectedModel;
+    const removedKey = modelKey(configId, modelSlug);
+    const hiddenModels = get().hiddenModels.filter((key) => key !== removedKey);
     set((state) => ({
       providerConfigs: state.providerConfigs.map((config) =>
         config.id === configId ? { ...config, customModels, models, selectedModel } : config
       ),
+      hiddenModels,
     }));
     void db.providerConfigs.update(configId, { customModels, models, selectedModel }).catch(() => undefined);
+    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
   },
 
   toggleHiddenModel: (key) => {
@@ -725,6 +735,22 @@ export const useAIStore = create<AIStore>((set, get) => ({
     const hiddenModels = hidden
       ? [...current, key]
       : current.filter((k) => k !== key);
+    set({ hiddenModels });
+    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+  },
+
+  setProviderModelsHidden: (providerId, hidden) => {
+    const provider = get().providerConfigs.find((config) => config.id === providerId);
+    if (!provider) return;
+    const modelKeys = new Set((provider.models ?? []).map((model) => modelKey(providerId, model.id)));
+    if (modelKeys.size === 0) return;
+
+    const current = get().hiddenModels;
+    const withoutProviderModels = current.filter((key) => !modelKeys.has(key));
+    const hiddenModels = hidden
+      ? [...withoutProviderModels, ...modelKeys]
+      : withoutProviderModels;
+
     set({ hiddenModels });
     void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
   },

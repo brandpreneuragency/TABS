@@ -161,6 +161,26 @@ export class BrowserFolderConnector implements FolderConnector {
     }
   }
 
+  async writeBinaryFile(path: string, content: Uint8Array): Promise<void> {
+    const parentPath = path.substring(0, path.lastIndexOf('/'));
+    const fileName = path.substring(path.lastIndexOf('/') + 1);
+
+    const parentHandle = await this.getHandleAtPath(parentPath);
+    if (!parentHandle) throw new Error('Parent directory not found.');
+
+    try {
+      const fileHandle = await parentHandle.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      // Copy into a fresh ArrayBuffer-backed view (BlobPart / FileSystemWriteChunkType).
+      const chunk = new Uint8Array(content.byteLength);
+      chunk.set(content);
+      await writable.write(chunk);
+      await writable.close();
+    } catch (err) {
+      throw new Error(`Failed to write file: ${getErrorMessage(err)}`);
+    }
+  }
+
   async mkdir(path: string): Promise<void> {
     const parentPath = path.substring(0, path.lastIndexOf('/'));
     const dirName = path.substring(path.lastIndexOf('/') + 1);

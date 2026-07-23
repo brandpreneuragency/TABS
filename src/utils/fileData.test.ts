@@ -22,6 +22,9 @@ describe('mimeTypeFromPath', () => {
     expect(mimeTypeFromPath('readme.txt')).toBe('text/plain');
     expect(mimeTypeFromPath('scan.PDF')).toBe('application/pdf');
     expect(mimeTypeFromPath('x.png')).toBe('image/png');
+    expect(mimeTypeFromPath('brief.docx')).toBe(
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    );
   });
 
   it('falls back for unknown extensions', () => {

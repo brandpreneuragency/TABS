@@ -5,6 +5,8 @@ const VIDEO_EXTENSIONS = new Set(['mp4', 'webm', 'ogv', 'mov', 'mkv', 'avi']);
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'doc']);
 const CODE_EXTENSIONS = new Set(['js', 'ts', 'tsx', 'jsx', 'mjs', 'cjs', 'json', 'html', 'htm', 'css', 'scss', 'yaml', 'yml', 'toml', 'xml', 'csv', 'env', 'local', 'gitignore', 'sh', 'bash', 'zsh', 'py', 'rb', 'go', 'rs', 'java', 'cpp', 'c', 'h', 'hpp']);
 const PDF_EXTENSIONS = new Set(['pdf']);
+/** Office Open XML Word — binary; opened via mammoth, not as plain text. */
+const DOCX_EXTENSIONS = new Set(['docx']);
 
 const ALL_TEXT_EXTENSIONS = new Set([...TEXT_EXTENSIONS, ...CODE_EXTENSIONS]);
 const MIME_CATEGORY_MAP = new Map<string, FileCategory>([
@@ -96,9 +98,13 @@ export function isPdfFile(name: string): boolean {
   return PDF_EXTENSIONS.has(getFileExtension(name));
 }
 
-/** Returns true if the file can be opened in TipTap editor (text/code + images) */
+export function isDocxFile(name: string): boolean {
+  return DOCX_EXTENSIONS.has(getFileExtension(name));
+}
+
+/** Returns true if the file can be opened in TipTap editor (text/code + images + docx) */
 export function canOpenInTipTap(name: string): boolean {
-  return isTextFile(name) || isImageFile(name);
+  return isTextFile(name) || isImageFile(name) || isDocxFile(name);
 }
 
 export function inferMimeTypeFromDataUrl(dataUrl?: string): string | undefined {

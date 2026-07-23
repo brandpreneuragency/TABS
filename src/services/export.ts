@@ -1,12 +1,6 @@
 import { saveAs } from 'file-saver';
-import {
-  Document as DocxDocument,
-  Packer,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-} from 'docx';
 import type { Document } from '../types';
+import { serializeDocx } from './docxFormat';
 
 import { useUIStore } from '../stores/uiStore';
 
@@ -16,55 +10,22 @@ function htmlToText(html: string): string {
   return div.textContent ?? div.innerText ?? '';
 }
 
-function jsonContentToDocxParagraphs(content: string): Paragraph[] {
-  const paragraphs: Paragraph[] = [];
-  try {
-    const json = JSON.parse(content);
-    const nodes = json.content ?? [];
-
-    for (const node of nodes) {
-      if (node.type === 'heading') {
-        const level = node.attrs?.level ?? 1;
-        const text = (node.content ?? []).map((n: { text?: string }) => n.text ?? '').join('');
-        const headingMap: Record<number, typeof HeadingLevel[keyof typeof HeadingLevel]> = {
-          1: HeadingLevel.HEADING_1,
-          2: HeadingLevel.HEADING_2,
-          3: HeadingLevel.HEADING_3,
-        };
-        paragraphs.push(new Paragraph({ text, heading: headingMap[level] ?? HeadingLevel.HEADING_1 }));
-      } else if (node.type === 'paragraph') {
-        const runs = (node.content ?? []).map((inline: { type: string; text?: string; marks?: { type: string }[] }) => {
-          const marks = inline.marks ?? [];
-          return new TextRun({
-            text: inline.text ?? '',
-            bold: marks.some((m) => m.type === 'bold'),
-            italics: marks.some((m) => m.type === 'italic'),
-            underline: marks.some((m) => m.type === 'underline') ? {} : undefined,
-            strike: marks.some((m) => m.type === 'strike'),
-          });
-        });
-        paragraphs.push(new Paragraph({ children: runs.length > 0 ? runs : [new TextRun('')] }));
-      } else if (node.type === 'bulletList' || node.type === 'orderedList') {
-        for (const item of node.content ?? []) {
-          const text = (item.content?.[0]?.content ?? [])
-            .map((n: { text?: string }) => n.text ?? '')
-            .join('');
-          paragraphs.push(new Paragraph({ text: `• ${text}` }));
-        }
-      }
-    }
-  } catch {
-    paragraphs.push(new Paragraph({ text: htmlToText(content) }));
-  }
-  return paragraphs.length > 0 ? paragraphs : [new Paragraph({ text: '' })];
-}
-
 export async function exportDocx(doc: Document) {
-  const paragraphs = jsonContentToDocxParagraphs(doc.content);
-  const docx = new DocxDocument({
-    sections: [{ properties: {}, children: paragraphs }],
+  let json: object;
+  try {
+    json = JSON.parse(doc.content) as object;
+  } catch {
+    json = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: htmlToText(doc.content) }] }],
+    };
+  }
+  const bytes = await serializeDocx(json);
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const blob = new Blob([copy], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
-  const blob = await Packer.toBlob(docx);
   saveAs(blob, `${doc.title}.docx`);
 }
 

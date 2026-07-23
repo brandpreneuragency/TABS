@@ -5,8 +5,8 @@ import type { Document } from '../../types';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useFileSystemStore } from '../../stores/fileSystemStore';
 import { useDocumentStore } from '../../stores/documentStore';
-import { serialize } from '../../services/fileFormat';
-import { writeTextFile, pickSaveTabsPath, getExt, joinPath } from '../../services/fs-adapter';
+import { writeEditorContent } from '../../services/writeEditorFile';
+import { pickSaveTabsPath, joinPath } from '../../services/fs-adapter';
 import { getDocumentTabMeta } from './documentTabUtils';
 
 interface DocumentTabDropdownItemProps {
@@ -56,9 +56,8 @@ export function DocumentTabDropdownItem({
 
     // CASE 1: file already has a path (opened from tree or saved before)
     if (doc.sourcePath) {
-      const ext = getExt(doc.sourcePath) || 'md';
       try {
-        await writeTextFile(doc.sourcePath, serialize(editorJson, ext));
+        await writeEditorContent(doc.sourcePath, editorJson);
         await updateDocument(doc.id, { isDirty: false });
         setConfirmClose(false);
         onClose();
@@ -73,6 +72,7 @@ export function DocumentTabDropdownItem({
     const filters = [
       { name: t('tabs.markdownFile'), extensions: ['md'] },
       { name: t('tabs.textFile'), extensions: ['txt'] },
+      { name: t('tabs.wordDocument'), extensions: ['docx'] },
     ];
     const suggestedName = `${base}.md`;
     const defaultDir = rootNode?.fullPath;
@@ -83,8 +83,7 @@ export function DocumentTabDropdownItem({
         defaultDir ? joinPath(defaultDir, suggestedName) : suggestedName
       );
       if (!newPath) return;
-      const ext = getExt(newPath) || 'md';
-      await writeTextFile(newPath, serialize(editorJson, ext));
+      await writeEditorContent(newPath, editorJson);
       setConfirmClose(false);
       onClose();
     } catch (err) {

@@ -30,6 +30,18 @@ export function ProviderConnectionTab({
   const status = provider.status ?? 'not_connected';
   const isConnected = status === 'connected';
 
+  // After a successful connect/reconnect, drop out of edit mode so the
+  // connected summary appears. Act only on the success *transition* (compare
+  // against the previous phase) — not on every render while phase is 'success'
+  // — so re-entering edit mode during the 2s success window still works.
+  const [prevPhase, setPrevPhase] = useState(testConnectionState.phase);
+  if (testConnectionState.phase !== prevPhase) {
+    setPrevPhase(testConnectionState.phase);
+    if (isConnected && testConnectionState.phase === 'success') {
+      setEditing(false);
+    }
+  }
+
   const lastImportedAt = provider.lastImportedAt;
   const lastImportedLabel = lastImportedAt
     ? new Date(lastImportedAt).toLocaleString()
@@ -145,11 +157,11 @@ export function ProviderConnectionTab({
         </div>
       </div>
 
-      {/* Test / reconnect feedback */}
+      {/* Connect / reconnect feedback */}
       {testConnectionState.phase === 'success' && (
         <div className="row-xs settings-feedback-success">
           <Check size={12} />
-          <span>{isConnected ? t('models.reconnectSuccess') : t('models.testSuccess')}</span>
+          <span>{editing ? t('models.reconnectSuccess') : t('models.providerConnected')}</span>
         </div>
       )}
       {testConnectionState.phase === 'error' && (
@@ -166,11 +178,11 @@ export function ProviderConnectionTab({
           onClick={onTestConnection}
           disabled={!canTestOrReconnect}
           className={`btn-send settings-action-btn${canTestOrReconnect ? '' : ' settings-action-btn--disabled'}`}
-          title={editing ? t('models.reconnect') : t('models.testConnection')}
-          aria-label={editing ? t('models.reconnect') : t('models.testConnection')}
+          title={editing ? t('models.reconnect') : t('models.connect')}
+          aria-label={editing ? t('models.reconnect') : t('models.connect')}
         >
           {isTesting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
-          <span>{isTesting ? t('models.testingConnection') : editing ? t('models.reconnect') : t('models.testConnection')}</span>
+          <span>{isTesting ? t('models.connecting') : editing ? t('models.reconnect') : t('models.connect')}</span>
         </button>
       </div>
     </div>

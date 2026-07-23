@@ -7,10 +7,11 @@ import type { Document, FileViewerItem } from '../types';
 import { db } from '../services/db';
 import { useUIStore } from './uiStore';
 import { parseByExt } from '../services/fileFormat';
-import { isTextFile, isImageFile } from '../utils/fileType';
-import { readTextFile } from '../services/fs-adapter';
+import { parseDocx } from '../services/docxFormat';
+import { isTextFile, isImageFile, isDocxFile } from '../utils/fileType';
+import { readTextFile, readBinaryFile } from '../services/fs-adapter';
 import type { TreeNode } from './fileSystemStore';
-import { decodeDataUrlText } from '../utils/fileData';
+import { decodeDataUrlBytes, decodeDataUrlText } from '../utils/fileData';
 
 const toast = (msg: string) => useUIStore.getState().showToast(msg, 'error');
 
@@ -258,6 +259,34 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
       return shell;
     }
 
+    if (file.dataUrl && isDocxFile(file.name)) {
+      let json: object;
+      try {
+        const bytes = decodeDataUrlBytes(file.dataUrl);
+        json = await parseDocx(bytes);
+      } catch {
+        toast(`Could not parse Word document: ${file.name}`);
+        return null;
+      }
+      const colorIndex = documents.length % 6;
+      const shell: Document = {
+        id: nanoid(8),
+        title: file.name,
+        content: JSON.stringify(json),
+        sourcePath: file.path,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        order: documents.length,
+        colorIndex,
+      };
+      await db.documents.add(shell);
+      set((s) => ({
+        documents: [...s.documents, shell],
+        activeDocumentId: shell.id,
+      }));
+      return shell;
+    }
+
     if (file.dataUrl && isImageFile(file.name)) {
       const content = {
         type: 'doc',
@@ -301,6 +330,40 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     if (existing) {
       get().setActiveDocument(existing.id);
       return existing;
+    }
+
+    if (isDocxFile(node.name)) {
+      try {
+        const bytes = await readBinaryFile(node.fullPath);
+        let json: object;
+        try {
+          json = await parseDocx(bytes);
+        } catch {
+          toast(`Could not parse Word document: ${node.name}`);
+          return null;
+        }
+
+        const colorIndex = documents.length % 6;
+        const shell: Document = {
+          id: nanoid(8),
+          title: node.name,
+          content: JSON.stringify(json),
+          sourcePath: node.fullPath,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          order: documents.length,
+          colorIndex,
+        };
+        await db.documents.add(shell);
+        set((s) => ({
+          documents: [...s.documents, shell],
+          activeDocumentId: shell.id,
+        }));
+        return shell;
+      } catch {
+        toast(`Could not read file: ${node.name}`);
+        return null;
+      }
     }
 
     if (isTextFile(node.name)) {

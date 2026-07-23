@@ -10,6 +10,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       if (opts?.count !== undefined) return `${key}:${opts.count}`;
       if (opts?.model) return `${key}:${opts.model}`;
+      if (opts?.provider) return `${key}:${opts.provider}`;
       return key;
     },
     i18n: { language: 'en' },
@@ -66,9 +67,11 @@ describe('ProviderDetailPanel', () => {
     onTestConnection: vi.fn(),
     onSyncModels: vi.fn(),
     onToggleModel: vi.fn(),
+    onToggleAllModels: vi.fn(),
     onToggleModelTools: vi.fn(),
     onSetModelReasoningDescriptor: vi.fn(),
     onAddCustomModel: vi.fn(),
+    onRemoveCustomModel: vi.fn(),
     onDeleteProvider: vi.fn(),
   };
 
@@ -199,5 +202,48 @@ describe('ProviderDetailPanel', () => {
     // The component passes the date string through the t() mock, which appends :<time>
     // Just verify the timestamp label key is rendered (it's only rendered when lastImportedAt exists)
     expect(screen.getByText(/models\.lastImportedAt/)).toBeInTheDocument();
+  });
+
+  it('renders master switch checked when all models are enabled', () => {
+    render(<ProviderDetailPanel {...defaultProps} />);
+
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('renders master switch unchecked when any model is hidden', () => {
+    render(
+      <ProviderDetailPanel
+        {...defaultProps}
+        provider={makeProvider({
+          models: [
+            { id: 'm1', name: 'M1', enabled: true, capabilities: { vision: false, toolCalling: true, contextLength: 'Unknown', speed: 'Unknown', cost: 'Unknown', reasoning: 'Unknown', endpointType: 'Native', lastSynced: 'Just now' } },
+            { id: 'm2', name: 'M2', enabled: true, capabilities: { vision: false, toolCalling: true, contextLength: 'Unknown', speed: 'Unknown', cost: 'Unknown', reasoning: 'Unknown', endpointType: 'Native', lastSynced: 'Just now' } },
+          ],
+        })}
+        hiddenModels={['p1:m2']}
+      />
+    );
+
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('calls onToggleAllModels when master switch is clicked', async () => {
+    const onToggleAllModels = vi.fn();
+    render(<ProviderDetailPanel {...defaultProps} onToggleAllModels={onToggleAllModels} />);
+
+    await userEvent.click(screen.getByRole('switch'));
+
+    expect(onToggleAllModels).toHaveBeenCalledWith('p1', false);
+  });
+
+  it('disables master switch when provider has no models', () => {
+    render(
+      <ProviderDetailPanel
+        {...defaultProps}
+        provider={makeProvider({ models: [] })}
+      />
+    );
+
+    expect(screen.getByRole('switch')).toBeDisabled();
   });
 });

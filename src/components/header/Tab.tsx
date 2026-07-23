@@ -5,9 +5,9 @@ import type { Document } from '../../types';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useFileSystemStore } from '../../stores/fileSystemStore';
 import { useDocumentStore } from '../../stores/documentStore';
-import { serialize } from '../../services/fileFormat';
+import { writeEditorContent } from '../../services/writeEditorFile';
 import { getDocumentTabMeta } from './documentTabUtils';
-import { writeTextFile, pickSaveTabsPath, getExt, joinPath } from '../../services/fs-adapter';
+import { pickSaveTabsPath, joinPath } from '../../services/fs-adapter';
 
 interface TabProps {
   doc: Document;
@@ -34,9 +34,8 @@ export function Tab({ doc, isActive, onSelect, onClose, onRename, charLimit }: T
 
     // CASE 1: file already has a path (opened from tree or saved before)
     if (doc.sourcePath) {
-      const ext = getExt(doc.sourcePath) || 'md';
       try {
-        await writeTextFile(doc.sourcePath, serialize(editorJson, ext));
+        await writeEditorContent(doc.sourcePath, editorJson);
         await updateDocument(doc.id, { isDirty: false });
         setConfirmClose(false);
         onClose();
@@ -51,6 +50,7 @@ export function Tab({ doc, isActive, onSelect, onClose, onRename, charLimit }: T
     const filters = [
       { name: t('tabs.markdownFile'), extensions: ['md'] },
       { name: t('tabs.textFile'), extensions: ['txt'] },
+      { name: t('tabs.wordDocument'), extensions: ['docx'] },
     ];
     const suggestedName = `${base}.md`;
     const defaultDir = rootNode?.fullPath;
@@ -61,8 +61,7 @@ export function Tab({ doc, isActive, onSelect, onClose, onRename, charLimit }: T
         defaultDir ? joinPath(defaultDir, suggestedName) : suggestedName
       );
       if (!newPath) return;
-      const ext = getExt(newPath) || 'md';
-      await writeTextFile(newPath, serialize(editorJson, ext));
+      await writeEditorContent(newPath, editorJson);
       setConfirmClose(false);
       onClose();
     } catch (err) {
@@ -149,12 +148,9 @@ export function Tab({ doc, isActive, onSelect, onClose, onRename, charLimit }: T
       {confirmClose && (
         <ConfirmDialog
           message={t('tabs.closeConfirm')}
-          onConfirm={() => { 
-            console.log('[Tab] onConfirm called for doc:', doc.id);
-            setConfirmClose(false); 
-            console.log('[Tab] calling onClose');
-            onClose(); 
-            console.log('[Tab] onClose completed');
+          onConfirm={() => {
+            setConfirmClose(false);
+            onClose();
           }}
           onCancel={() => setConfirmClose(false)}
           onSave={handleSave}

@@ -106,6 +106,7 @@ describe('ProviderModelsTab', () => {
     onToggleModelTools: vi.fn(),
     onSetModelReasoningDescriptor: vi.fn(),
     onAddCustomModel: vi.fn(),
+    onRemoveCustomModel: vi.fn(),
     onSyncModels: vi.fn(),
   };
 
@@ -246,6 +247,39 @@ describe('ProviderModelsTab', () => {
     render(<ProviderModelsTab {...defaultProps} provider={provider} />);
 
     expect(screen.getByText('models.sourceCustom')).toBeInTheDocument();
+  });
+
+  it('shows remove button only for custom models', () => {
+    const provider = makeProvider({
+      models: [
+        makeModel('gpt-4o', { name: 'GPT-4o' }),
+        makeModel('my-custom', { name: 'My Custom Model', custom: true }),
+      ],
+    });
+    render(<ProviderModelsTab {...defaultProps} provider={provider} />);
+
+    expect(screen.getByLabelText('models.removeCustomModel:My Custom Model')).toBeInTheDocument();
+    expect(screen.queryByLabelText('models.removeCustomModel:GPT-4o')).not.toBeInTheDocument();
+  });
+
+  it('calls onRemoveCustomModel when remove button is clicked', async () => {
+    const onRemoveCustomModel = vi.fn();
+    const provider = makeProvider({
+      models: [
+        makeModel('my-custom', { name: 'My Custom Model', custom: true }),
+      ],
+    });
+    render(
+      <ProviderModelsTab
+        {...defaultProps}
+        provider={provider}
+        onRemoveCustomModel={onRemoveCustomModel}
+      />
+    );
+
+    await userEvent.click(screen.getByLabelText('models.removeCustomModel:My Custom Model'));
+
+    expect(onRemoveCustomModel).toHaveBeenCalledWith('p1', 'my-custom');
   });
 
   it('expands model row to show tools and thinking controls', async () => {

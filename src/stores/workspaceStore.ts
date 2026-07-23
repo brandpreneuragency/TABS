@@ -14,9 +14,11 @@ import { nanoid } from 'nanoid';
 import type { Workspace, WorkspaceFile, ConnectedFolderRef, FileViewerItem } from '../types';
 import { db } from '../services/db';
 import { useUIStore } from './uiStore';
-import { parseByExt, serialize } from '../services/fileFormat';
-import { isTextFile, isImageFile, isPdfFile } from '../utils/fileType';
-import { bytesToDataUrl, decodeDataUrlText, mimeTypeFromPath } from '../utils/fileData';
+import { parseByExt } from '../services/fileFormat';
+import { parseDocx } from '../services/docxFormat';
+import { writeEditorContent } from '../services/writeEditorFile';
+import { isTextFile, isImageFile, isPdfFile, isDocxFile } from '../utils/fileType';
+import { bytesToDataUrl, decodeDataUrlBytes, decodeDataUrlText, mimeTypeFromPath } from '../utils/fileData';
 import {
   openFolderDialog,
   readDir,
@@ -31,7 +33,6 @@ import {
   joinPath,
   isNativeFsAvailable,
   pickSaveTabsPath,
-  getExt,
 } from '../services/fs-adapter';
 import { getFolderConnector } from '../services/runtime';
 
@@ -643,7 +644,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }
     }
 
-    if (!isTextFile(node.name) && !isImageFile(node.name)) {
+    if (!isTextFile(node.name) && !isImageFile(node.name) && !isDocxFile(node.name)) {
       toast(`Unsupported file type for editor: .${node.name.split('.').pop() ?? ''}`);
       return false;
     }
@@ -658,6 +659,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           type: 'doc',
           content: [{ type: 'image', attrs: { src: dataUrl } }],
         };
+      } else if (isDocxFile(node.name)) {
+        const bytes = await readBinaryFile(fullPath);
+        try {
+          json = await parseDocx(bytes);
+        } catch {
+          toast(`Could not parse Word document: ${node.name}`);
+          return false;
+        }
       } else {
         const ext = node.name.split('.').pop()?.toLowerCase() ?? '';
         const text = await readTextFile(fullPath);
@@ -706,9 +715,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       try { return JSON.parse(ws.currentFile.content) as object; } catch { return { type: 'doc', content: [] }; }
     })();
 
-    const ext = (ws.currentFile.path.split('.').pop() ?? 'md').toLowerCase();
     try {
-      await writeTextFile(ws.currentFile.path, serialize(editorJson, ext));
+      await writeEditorContent(ws.currentFile.path, editorJson);
       // Mark as clean
       set((s) => ({
         workspaces: s.workspaces.map((w) =>
@@ -744,6 +752,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const filters = [
       { name: 'Markdown File', extensions: ['md', 'markdown'] },
       { name: 'Text File', extensions: ['txt'] },
+      { name: 'Word Document', extensions: ['docx'] },
     ];
     const suggestedName = `${base}.md`;
     // Prefer the connected folder when present; still works with none —
@@ -757,8 +766,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         defaultDir ? joinPath(defaultDir, suggestedName) : suggestedName
       );
       if (!newPath) return; // user cancelled
-      const ext = getExt(newPath) || 'md';
-      await writeTextFile(newPath, serialize(editorJson, ext));
+      await writeEditorContent(newPath, editorJson);
       const newName = newPath.split(/[/\\]/).pop() ?? ws.currentFile.name;
       const prevPath = ws.currentFile.path;
       // Keep undo/selection when promoting a draft path to a real file path.
@@ -841,6 +849,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         json = parseByExt(text, ext);
       } catch {
         toast(`Could not parse file: ${file.name}`);
+        return;
+      }
+      const newFile: WorkspaceFile = {
+        path: file.path ?? '',
+        name: file.name,
+        content: JSON.stringify(json),
+        isDirty: false,
+      };
+      get().updateWorkspace(activeWs.id, { currentFile: newFile });
+    } else if (file.dataUrl && isDocxFile(file.name)) {
+      let json: object;
+      try {
+        const bytes = decodeDataUrlBytes(file.dataUrl);
+        json = await parseDocx(bytes);
+      } catch {
+        toast(`Could not parse Word document: ${file.name}`);
         return;
       }
       const newFile: WorkspaceFile = {

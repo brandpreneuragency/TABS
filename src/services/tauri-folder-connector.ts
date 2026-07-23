@@ -14,6 +14,7 @@ import {
   readFile as tauriReadFile,
   readTextFile as tauriReadTextFile,
   writeTextFile as tauriWriteTextFile,
+  writeFile as tauriWriteFile,
   mkdir as tauriMkdir,
   remove as tauriRemove,
   rename as tauriRename,
@@ -101,6 +102,10 @@ export class TauriFolderConnector implements FolderConnector {
 
   async writeTextFile(path: string, content: string): Promise<void> {
     await tauriWriteTextFile(path, content, { baseDir: baseDir(path) });
+  }
+
+  async writeBinaryFile(path: string, content: Uint8Array): Promise<void> {
+    await tauriWriteFile(path, content, { baseDir: baseDir(path) });
   }
 
   async mkdir(path: string, recursive = false): Promise<void> {

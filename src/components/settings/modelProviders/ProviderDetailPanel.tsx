@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AIProviderConfig, ModelReasoning } from '../../../types';
 import { ProviderStatusBadge } from '../../modals/modelProvider/ProviderStatusBadge';
+import { ModelSwitch } from '../../modals/modelProvider/ModelSwitch';
 import { ProviderTabs, type ProviderTabId } from './ProviderTabs';
 import { ProviderConnectionTab } from './ProviderConnectionTab';
 import { ProviderModelsTab } from './ProviderModelsTab';
@@ -19,9 +20,11 @@ interface ProviderDetailPanelProps {
   onTestConnection: () => void;
   onSyncModels: () => void;
   onToggleModel: (providerId: string, modelId: string, enabled: boolean) => void;
+  onToggleAllModels: (providerId: string, enabled: boolean) => void;
   onToggleModelTools: (providerId: string, modelId: string, supportsTools: boolean) => void;
   onSetModelReasoningDescriptor: (providerId: string, modelId: string, reasoning: ModelReasoning | undefined) => void;
   onAddCustomModel: (providerId: string, slug: string) => void;
+  onRemoveCustomModel: (providerId: string, modelId: string) => void;
   onDeleteProvider: (id: string) => void;
 }
 
@@ -41,9 +44,11 @@ export function ProviderDetailPanel({
   onTestConnection,
   onSyncModels,
   onToggleModel,
+  onToggleAllModels,
   onToggleModelTools,
   onSetModelReasoningDescriptor,
   onAddCustomModel,
+  onRemoveCustomModel,
   onDeleteProvider,
 }: ProviderDetailPanelProps) {
   const { t } = useTranslation();
@@ -77,6 +82,7 @@ export function ProviderDetailPanel({
   const enabledCount = (provider.models ?? []).filter(
     (m) => !hiddenModels.includes(`${provider.id}:${m.id}`),
   ).length;
+  const allModelsEnabled = modelCount > 0 && enabledCount === modelCount;
   const lastImportedAt = provider.lastImportedAt;
   const lastImportedLabel = lastImportedAt
     ? new Date(lastImportedAt).toLocaleString()
@@ -93,9 +99,21 @@ export function ProviderDetailPanel({
       <div className="provider-detail-header settings-provider-detail-head">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="row gap-3 min-w-0">
-            <span className="semibold" style={{ fontSize: 'var(--fs-base)', color: 'var(--c-text-1)' }}>
-              {provider.name}
-            </span>
+            <div className="row gap-2 min-w-0" style={{ alignItems: 'center' }}>
+              <span className="semibold" style={{ fontSize: 'var(--fs-base)', color: 'var(--c-text-1)' }}>
+                {provider.name}
+              </span>
+              <ModelSwitch
+                checked={allModelsEnabled}
+                disabled={modelCount === 0}
+                onChange={(checked) => onToggleAllModels(provider.id, checked)}
+                ariaLabel={
+                  allModelsEnabled
+                    ? t('models.disableAllModels', { provider: provider.name })
+                    : t('models.enableAllModels', { provider: provider.name })
+                }
+              />
+            </div>
             <ProviderStatusBadge status={status} />
             <span className="subtle settings-provider-detail-head-meta">
               {enabledCount}/{modelCount} {t('models.tabModels')}
@@ -172,6 +190,7 @@ export function ProviderDetailPanel({
             onToggleModelTools={onToggleModelTools}
             onSetModelReasoningDescriptor={onSetModelReasoningDescriptor}
             onAddCustomModel={onAddCustomModel}
+            onRemoveCustomModel={onRemoveCustomModel}
             onSyncModels={onSyncModels}
           />
         )}

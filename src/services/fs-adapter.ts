@@ -130,6 +130,12 @@ export async function writeTextFile(path: string, content: string): Promise<void
   await connector.writeTextFile(path, content);
 }
 
+/** Write raw bytes. Creates the file if it does not exist; overwrites if it does. */
+export async function writeBinaryFile(path: string, content: Uint8Array): Promise<void> {
+  const connector = await getFolderConnector();
+  await connector.writeBinaryFile(path, content);
+}
+
 /** Create a directory. */
 export async function mkdir(path: string, recursive = false): Promise<void> {
   const connector = await getFolderConnector();

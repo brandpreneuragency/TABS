@@ -646,6 +646,26 @@
   display: flex;
   justify-content: center;
 }
+.settings-model-remove-cell {
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.settings-model-remove-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-3);
+}
+.settings-model-remove-btn:hover {
+  color: var(--c-text-1);
+}
 .settings-model-reasoning-row {
   display: flex;
   align-items: center;
@@ -934,8 +954,8 @@
   min-width: 140px;
   padding: 4px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--c-border-1);
-  background: var(--c-background-0);
+  border: none;
+  background: var(--c-background-3);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   display: flex;
   flex-direction: column;
@@ -949,6 +969,10 @@
   cursor: pointer;
   border-radius: var(--radius-sm);
   text-align: left;
+  height: auto;
+  width: fit-content;
+  min-width: fit-content;
+  min-height: 0;
 }
 .settings-advanced-filter-menu button:hover {
   background: var(--c-background-1);
@@ -956,6 +980,8 @@
 .settings-advanced-filter-item--active {
   background: var(--c-accent-center-panel, var(--c-brand));
   color: #fff;
+  width: fit-content;
+  min-width: fit-content;
 }
 
 /* ── Model row: capability badges ── */

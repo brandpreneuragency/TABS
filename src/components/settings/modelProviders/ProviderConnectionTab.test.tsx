@@ -83,7 +83,7 @@ describe('ProviderConnectionTab', () => {
     };
     render(<ProviderConnectionTab {...props} />);
 
-    expect(screen.getByText('models.testConnection')).toBeInTheDocument();
+    expect(screen.getByText('models.connect')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('https://api.example.com/v1')).toBeInTheDocument();
   });
 
@@ -96,7 +96,7 @@ describe('ProviderConnectionTab', () => {
     };
     render(<ProviderConnectionTab {...props} />);
 
-    const button = screen.getByText('models.testConnection').closest('button')!;
+    const button = screen.getByText('models.connect').closest('button')!;
     expect(button).toBeDisabled();
   });
 
@@ -109,7 +109,7 @@ describe('ProviderConnectionTab', () => {
     };
     render(<ProviderConnectionTab {...props} />);
 
-    const button = screen.getByText('models.testConnection').closest('button')!;
+    const button = screen.getByText('models.connect').closest('button')!;
     expect(button).not.toBeDisabled();
   });
 
@@ -121,7 +121,7 @@ describe('ProviderConnectionTab', () => {
     };
     render(<ProviderConnectionTab {...props} />);
 
-    expect(screen.getByText('models.testingConnection')).toBeInTheDocument();
+    expect(screen.getByText('models.connecting')).toBeInTheDocument();
   });
 
   it('shows success feedback after successful test for non-connected provider', () => {
@@ -132,7 +132,7 @@ describe('ProviderConnectionTab', () => {
     };
     render(<ProviderConnectionTab {...props} />);
 
-    expect(screen.getByText('models.testSuccess')).toBeInTheDocument();
+    expect(screen.getByText('models.providerConnected')).toBeInTheDocument();
   });
 
   it('shows error feedback after failed test', () => {
@@ -155,7 +155,7 @@ describe('ProviderConnectionTab', () => {
     };
     render(<ProviderConnectionTab {...props} />);
 
-    const button = screen.getByText('models.testConnection').closest('button')!;
+    const button = screen.getByText('models.connect').closest('button')!;
     await userEvent.click(button);
 
     expect(onTestConnection).toHaveBeenCalledTimes(1);

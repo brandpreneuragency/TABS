@@ -70,11 +70,9 @@ select:focus-visible {
 
   /* Typography - fluid */
   --c-font-1: 'Inter', sans-serif;
-  --font-fluid-10: clamp(4px, 0.4vw, 10px);  
-  --font-fluid-12: clamp(5px, 0.5vw, 11px);
-  --font-fluid-14: clamp(6px, 0.6vw, 12px);
-  --font-fluid-16: clamp(7px, 0.7vw, 13px);
-  
+  --font-fluid-12: clamp(10px, 0.6vw, 14px);
+  --font-fluid-14: clamp(11px, 0.7vw, 15px);
+  --font-fluid-16: clamp(12px, 0.8vw, 16px);
   /* Size tokens */
   --fs-xs: var(--font-fluid-12);   /* extra small */
   --fs-sm: var(--font-fluid-12);   /* small */
@@ -3924,16 +3922,16 @@ button.calendar-task-row {
   flex: 1;
   width: 100%;
   min-width: 0;
-  height: 32px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   margin: 0;
   padding: 0 12px;
-  border: 1px solid var(--c-border-1);
+  border: none;
   border-radius: 8px;
-  background: var(--c-background-4);
+  background: var(--c-background-3);
   color: var(--c-text-1);
   font-family: var(--c-font-1) !important;
   font-size: var(--fs-base);

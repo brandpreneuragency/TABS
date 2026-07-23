@@ -15,6 +15,7 @@ import { useAIStore } from '../../stores/aiStore';
 import { secureStorage } from '../../services/secureStorage';
 import type { ModelReasoning } from '../../types';
 import { ProviderDetailPanel } from './modelProviders/ProviderDetailPanel';
+import { connectProviderFromDraft } from './modelProviders/connectProviderDraft';
 
 
 function providerApiKeyName(providerId: string): string {
@@ -151,12 +152,20 @@ export function ModelManagementContent({ isInline = false, onClose, selectedProv
     useAIStore.getState().setModelHidden(providerId, modelId, !enabled);
   };
 
+  const toggleAllModels = (providerId: string, enabled: boolean) => {
+    useAIStore.getState().setProviderModelsHidden(providerId, !enabled);
+  };
+
   const toggleModelTools = (providerId: string, modelId: string, supportsTools: boolean) => {
     useAIStore.getState().setModelSupportsTools(providerId, modelId, supportsTools);
   };
 
   const addCustomModel = (providerId: string, slug: string) => {
     useAIStore.getState().addModelToProvider(providerId, slug);
+  };
+
+  const removeCustomModel = (providerId: string, modelId: string) => {
+    useAIStore.getState().removeModelFromProvider(providerId, modelId);
   };
 
   const setModelReasoningDescriptor = (
@@ -183,10 +192,17 @@ export function ModelManagementContent({ isInline = false, onClose, selectedProv
     setTestConnectionState((prev) => ({ ...prev, [providerId]: { phase: 'testing' } }));
 
     try {
-      // Read-only validation — nothing is persisted.
-      const result = await useAIStore
-        .getState()
-        .testProviderConnection(providerId, draftBaseUrl, draftKey);
+      // Persist key + import models + mark connected (not a read-only test).
+      const store = useAIStore.getState();
+      const result = await connectProviderFromDraft(
+        {
+          importProviderModels: store.importProviderModels,
+          setActiveProvider: store.setActiveProvider,
+        },
+        providerId,
+        draftBaseUrl,
+        draftKey,
+      );
 
       if (result.ok) {
         setTestConnectionState((prev) => ({ ...prev, [providerId]: { phase: 'success' } }));
@@ -259,9 +275,11 @@ export function ModelManagementContent({ isInline = false, onClose, selectedProv
       onTestConnection={() => handleTestConnection(selectedProvider.id)}
       onSyncModels={() => handleSyncModels(selectedProvider.id)}
       onToggleModel={toggleModel}
+      onToggleAllModels={toggleAllModels}
       onToggleModelTools={toggleModelTools}
       onSetModelReasoningDescriptor={setModelReasoningDescriptor}
       onAddCustomModel={addCustomModel}
+      onRemoveCustomModel={removeCustomModel}
       onDeleteProvider={(id) => {
         if (onDeleteProvider) {
           onDeleteProvider(id);

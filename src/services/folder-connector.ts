@@ -38,6 +38,9 @@ export interface FolderConnector {
   /** Write a text file (creates or overwrites). */
   writeTextFile(path: string, content: string): Promise<void>;
 
+  /** Write raw bytes (creates or overwrites). Used for binary formats like .docx. */
+  writeBinaryFile(path: string, content: Uint8Array): Promise<void>;
+
   /** Create a directory. */
   mkdir(path: string, recursive?: boolean): Promise<void>;
 

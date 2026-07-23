@@ -2,16 +2,22 @@ interface ModelSwitchProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   ariaLabel: string;
+  disabled?: boolean;
 }
 
-export function ModelSwitch({ checked, onChange, ariaLabel }: ModelSwitchProps) {
+export function ModelSwitch({ checked, onChange, ariaLabel, disabled = false }: ModelSwitchProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={ariaLabel}
-      onClick={() => onChange(!checked)}
+      aria-disabled={disabled || undefined}
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        onChange(!checked);
+      }}
       className="model-switch"
       style={{
         width: 36,
@@ -22,8 +28,9 @@ export function ModelSwitch({ checked, onChange, ariaLabel }: ModelSwitchProps) 
         borderRadius: 9999,
         border: 'none',
         padding: 0,
-        cursor: 'pointer',
-        background: checked ? 'var(--c-accent-center-panel)' : 'var(--c-background-4)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        background: checked ? 'var(--c-accent-1)' : 'var(--c-background-1)',
         transition: 'background-color 0.15s',
         position: 'relative',
         flexShrink: 0,

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Search, Download, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Download, RefreshCw, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AIProviderConfig, ModelItem, ModelReasoning } from '../../../types';
 import { ModelSwitch } from '../../modals/modelProvider/ModelSwitch';
@@ -17,6 +17,7 @@ interface ProviderModelsTabProps {
   onToggleModelTools: (providerId: string, modelId: string, supportsTools: boolean) => void;
   onSetModelReasoningDescriptor: (providerId: string, modelId: string, reasoning: ModelReasoning | undefined) => void;
   onAddCustomModel: (providerId: string, slug: string) => void;
+  onRemoveCustomModel: (providerId: string, modelId: string) => void;
   onSyncModels?: () => void;
 }
 
@@ -27,6 +28,7 @@ export function ProviderModelsTab({
   onToggleModelTools,
   onSetModelReasoningDescriptor,
   onAddCustomModel,
+  onRemoveCustomModel,
   onSyncModels,
 }: ProviderModelsTabProps) {
   const { t } = useTranslation();
@@ -212,6 +214,7 @@ export function ProviderModelsTab({
               <span style={{ flex: 2 }}>{t('models.colCapabilities')}</span>
               <span style={{ width: 48, textAlign: 'center' }}>{t('models.colEnabled')}</span>
               <span style={{ width: 32 }}></span>
+              <span style={{ width: 32 }}></span>
             </div>
 
             {/* Table rows */}
@@ -257,6 +260,19 @@ export function ProviderModelsTab({
                         onChange={(checked) => onToggleModel(provider.id, model.id, checked)}
                         ariaLabel={`${enabled ? t('models.hideFromSelector', { model: model.name }) : t('models.showInSelector', { model: model.name })}`}
                       />
+                    </span>
+                    <span className="settings-model-remove-cell">
+                      {model.custom ? (
+                        <button
+                          type="button"
+                          className="btn-icon settings-model-remove-btn"
+                          onClick={() => onRemoveCustomModel(provider.id, model.id)}
+                          title={t('models.removeCustomModel', { model: model.name })}
+                          aria-label={t('models.removeCustomModel', { model: model.name })}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      ) : null}
                     </span>
                     <button
                       type="button"
