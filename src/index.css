@@ -344,7 +344,7 @@ input.ctrl-xs.editor-topbar-title-input {
   min-width: 0;
   min-height: 0;
   height: 32px;
-  padding-left: 6px;
+  padding-left: 0;
   padding-right: 0;
   background-color: rgba(17, 17, 17, 0);
   user-select: none;
@@ -894,7 +894,7 @@ input.subtasks-title-input:focus-visible {
   margin-top: 4px;
   margin-bottom: 0;
   gap: 4px;
-  background: var(--c-accent-1);
+  background: var(--c-background-2);
 }
 
 [id^="tab-task-active"].tab-active {
@@ -3533,13 +3533,13 @@ button.calendar-task-row {
   border-right: 1px solid var(--c-border-1);
 }
 :root #left-resize-handle:hover {
-  background: var(--c-accent-1);
+  background: var(--c-border-1);
 }
 :root #right-resize-handle {
   background: var(--c-border-2);
 }
 :root #right-resize-handle:hover {
-  background: var(--c-accent-1);
+  background: var(--c-border-1);
 }
 /*TABS / HEADER*/
 :root #header-bar {
@@ -3662,7 +3662,7 @@ button.calendar-task-row {
   margin-top: 4px;
   margin-bottom: 0;
   gap: 4px;
-  background: var(--c-accent-1);
+  background: var(--c-background-2);
 }
 :root [id^="tab-task-active"].tab-active {
   border: none;
