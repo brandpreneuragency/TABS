@@ -6,6 +6,7 @@
 // IndexedDB name stays `ZenEditorCRMFormsDB` for existing installs.
 
 import Dexie, { type Table } from 'dexie';
+import type { AgentOperationReceipt } from '../types/agent';
 import type {
   CRMLead,
   CRMContact,
@@ -30,7 +31,7 @@ export interface CRMSettingsRecord {
 }
 
 /** CRM/Forms companion DB. IndexedDB name stays `ZenEditorCRMFormsDB` for existing installs. */
-class TabsCRMFormsDB extends Dexie {
+export class TabsCRMFormsDB extends Dexie {
   crmLeads!: Table<CRMLead, string>;
   crmContacts!: Table<CRMContact, string>;
   crmCompanies!: Table<CRMCompany, string>;
@@ -47,6 +48,7 @@ class TabsCRMFormsDB extends Dexie {
   formWebhooks!: Table<WebhookConfig, string>;
 
   crmSettings!: Table<CRMSettingsRecord, string>;
+  agentOperationReceipts!: Table<AgentOperationReceipt, string>;
 
   constructor() {
     super('ZenEditorCRMFormsDB');
@@ -67,6 +69,23 @@ class TabsCRMFormsDB extends Dexie {
       formWebhooks: 'id, formId, enabled, createdAt, updatedAt',
 
       crmSettings: 'key',
+    });
+    this.version(2).stores({
+      crmLeads: 'id, status, stage, contactId, companyId, ownerId, source, sourceFormId, createdAt, updatedAt, lastActivityAt',
+      crmContacts: 'id, email, companyId, createdAt, updatedAt, lastActivityAt',
+      crmCompanies: 'id, name, industry, ownerId, createdAt, updatedAt, lastActivityAt',
+      crmDeals: 'id, stage, leadId, contactId, companyId, ownerId, createdAt, updatedAt',
+      crmActivities: 'id, type, leadId, contactId, companyId, dealId, formId, submissionId, taskId, createdAt',
+      crmNotes: 'id, leadId, contactId, companyId, dealId, createdAt, updatedAt',
+      crmTaskLinks: 'id, taskId, leadId, contactId, companyId, dealId, createdAt',
+      crmSavedViews: 'id, entity, isDefault, createdAt, updatedAt',
+      crmPipelineStages: 'id, key, order',
+      forms: 'id, status, name, createdAt, updatedAt',
+      formSubmissions: 'id, formId, status, sourceDomain, leadId, contactId, companyId, createdAt',
+      formTemplates: 'id, name, category, createdAt, updatedAt',
+      formWebhooks: 'id, formId, enabled, createdAt, updatedAt',
+      crmSettings: 'key',
+      agentOperationReceipts: 'id, &operationId, effectFingerprint, domain, committedAt',
     });
   }
 }

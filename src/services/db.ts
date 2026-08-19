@@ -1,5 +1,18 @@
 import Dexie, { type Table } from 'dexie';
 import type { Document, Workspace, ChatMessage, Agent, AIProviderConfig, AppSettings, QuickPrompt, ActionGroup, Task, Project, TaskComment, TaskAIChangeBatch, ChatThreadMeta } from '../types';
+import type {
+  AgentApproval,
+  AgentArtifact,
+  AgentEvent,
+  AgentMessage,
+  AgentOperationReceipt,
+  AgentPolicyGrant,
+  AgentProviderAttempt,
+  AgentRun,
+  AgentToolCall,
+  AgentToolExecutionAttempt,
+  TaskProjectionJob,
+} from '../types/agent';
 
 /** @deprecated Removed in v12 — folders now live inside Workspace objects. */
 export interface FileHandleRecord {
@@ -7,8 +20,25 @@ export interface FileHandleRecord {
   path: string;
 }
 
+export interface AgentProfileRecord {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  updatedAt: number;
+  [key: string]: unknown;
+}
+
+export interface AgentRuntimeLeaseRecord {
+  id: 'scheduler';
+  ownerId: string;
+  mode: 'active' | 'quiescing';
+  reason?: 'shutdown' | 'update';
+  requestId?: string;
+  expiresAt: number;
+}
+
 /** Primary app DB. IndexedDB name stays `ZenEditorDB` for existing installs. */
-class TabsDB extends Dexie {
+export class TabsDB extends Dexie {
   /** @deprecated Replaced by workspaces in v12. */
   documents!: Table<Document>;
   workspaces!: Table<Workspace>;
@@ -25,6 +55,19 @@ class TabsDB extends Dexie {
   taskComments!: Table<TaskComment>;
   taskAIChangeBatches!: Table<TaskAIChangeBatch>;
   chatThreads!: Table<ChatThreadMeta>;
+  agentRuns!: Table<AgentRun, string>;
+  agentEvents!: Table<AgentEvent, string>;
+  agentMessages!: Table<AgentMessage, string>;
+  agentProviderAttempts!: Table<AgentProviderAttempt, string>;
+  agentToolCalls!: Table<AgentToolCall, string>;
+  agentToolAttempts!: Table<AgentToolExecutionAttempt, string>;
+  agentApprovals!: Table<AgentApproval, string>;
+  agentPolicyGrants!: Table<AgentPolicyGrant, string>;
+  agentArtifacts!: Table<AgentArtifact, string>;
+  agentProfiles!: Table<AgentProfileRecord, string>;
+  agentOperationReceipts!: Table<AgentOperationReceipt, string>;
+  agentRuntimeLeases!: Table<AgentRuntimeLeaseRecord, string>;
+  taskProjectionJobs!: Table<TaskProjectionJob, string>;
 
   constructor() {
     super('ZenEditorDB');
@@ -208,6 +251,38 @@ class TabsDB extends Dexie {
       // Start fresh: clear old chat data (user chose this migration strategy)
       await tx.table('chatThreads').clear();
       await tx.table('chatMessages').clear();
+    });
+    this.version(13).stores({
+      workspaces: 'id, name, updatedAt, order',
+      chatMessages: 'id, threadId, mode, agentId, timestamp, settingsTab, workspaceId',
+      chatThreads: 'id, mode, updatedAt, workspaceId, taskId, settingsTab',
+      agents: 'id, name, isDefault, scope',
+      providerConfigs: 'id, provider, isActive',
+      settings: 'key',
+      quickPrompts: 'id, createdAt, scope, groupId, order',
+      actionGroups: 'id, scope, order',
+      tasks: 'id, title, updatedAt, order, projectId, status, parentId',
+      projects: 'id, name',
+      taskComments: 'id, taskId, createdAt',
+      taskAIChangeBatches: 'id, taskId, createdAt, expiresAt',
+      agentRuns:
+        'id, status, createdAt, updatedAt, queuePriority, archivedAt, parentRunId, [status+queuePriority]',
+      agentEvents: 'id, runId, &[runId+sequence], type, createdAt',
+      agentMessages: 'id, runId, &[runId+messageIndex], role, createdAt',
+      agentProviderAttempts:
+        'id, runId, status, turn, startedAt, &[runId+executionEpoch+turn+attempt]',
+      agentToolCalls:
+        'id, runId, &operationId, effectFingerprint, status, toolName, createdAt',
+      agentToolAttempts:
+        'id, runId, toolCallId, operationId, status, &[toolCallId+executionEpoch+attempt]',
+      agentApprovals: 'id, runId, toolCallId, status, createdAt',
+      agentPolicyGrants: 'id, runId, policyRevision, toolName, expiresAt',
+      agentArtifacts: 'id, runId, kind, createdAt',
+      agentProfiles: 'id, name, isDefault, updatedAt',
+      agentOperationReceipts: 'id, &operationId, effectFingerprint, domain, committedAt',
+      agentRuntimeLeases: 'id, ownerId, expiresAt',
+      taskProjectionJobs:
+        'id, taskId, projectionKey, sourceOperationId, status, nextAttemptAt, createdAt, &[sourceOperationId+projectionKey], [status+nextAttemptAt]',
     });
   }
 }
