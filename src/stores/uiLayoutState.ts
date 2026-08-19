@@ -110,6 +110,16 @@ export function selectIsContextPanelOpen(
   return state.contextPanelOpenByMode[mode];
 }
 
+/** Contextual list/tree is hidden on Task Projects and CRM Pipeline. */
+export function selectIsContextPanelAvailable(
+  state: ModeRoutingState & { activeTaskPage: string },
+): boolean {
+  const mode = selectActiveWorkspaceMode(state);
+  if (mode === 'tasks') return state.activeTaskPage !== 'projects';
+  if (mode === 'crm') return state.activeCRMPage !== 'pipeline';
+  return true;
+}
+
 export function mergeContextPanelOpenByMode(
   partial: Partial<ContextPanelOpenByMode> | null | undefined,
   fallbacks: Partial<ContextPanelOpenByMode> = {},

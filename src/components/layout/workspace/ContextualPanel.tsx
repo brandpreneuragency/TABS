@@ -6,6 +6,8 @@ interface ContextualPanelProps {
   mode: WorkspaceMode;
   widthVw: number;
   children: ReactNode;
+  /** When true, the parent grid sizes this track; skip the explicit vw width. */
+  fillRemaining?: boolean;
   /** Optional stable id for mode-specific panels (file-tree, task-list, …). */
   panelId?: string;
   className?: string;
@@ -18,19 +20,20 @@ interface ContextualPanelProps {
  */
 export const ContextualPanel = forwardRef<HTMLDivElement, ContextualPanelProps>(
   function ContextualPanel(
-    { mode, widthVw, children, panelId, className = '', style },
+    { mode, widthVw, children, fillRemaining = false, panelId, className = '', style },
     ref,
   ) {
     return (
       <div
         ref={ref}
         id={panelId}
-        className={`contextual-panel task-list-panel relative shrink-0 overflow-h flex-col h-full min-w-0 ${className}`.trim()}
+        className={`contextual-panel task-list-panel relative overflow-h flex-col h-full min-w-0 ${className}`.trim()}
         data-workspace-mode={mode}
         data-context-panel=""
         style={{
-          width: `clamp(${CONTEXT_MIN_PX}px, ${widthVw}vw, ${CONTEXT_MAX_PX}px)`,
-          minWidth: 0,
+          ...(fillRemaining
+            ? { width: '100%', minWidth: 0, maxWidth: 'none' }
+            : { width: `clamp(${CONTEXT_MIN_PX}px, ${widthVw}vw, ${CONTEXT_MAX_PX}px)` }),
           minHeight: 0,
           ...style,
         }}

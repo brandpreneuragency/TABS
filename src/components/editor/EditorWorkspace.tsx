@@ -93,15 +93,20 @@ export function EditorWorkspace({ onEditorReady }: EditorWorkspaceProps) {
     <div
       id="editor-column"
       className={`panel col h-full${rainbowMode ? ' rainbow-mode' : ''}`}
-      style={{ background: 'var(--center-bg)' }}
+      style={{ background: 'var(--center-bg)', padding: '10px 10px 0px 10px' }}
     >
-      <EditorTopBar editor={localEditor} onSave={saveDocument} />
+      <EditorTopBar
+        editor={localEditor}
+        onSave={saveDocument}
+        fileName={currentFile?.name}
+        onTitleCommit={() => { /* file names are managed by the tree */ }}
+      />
 
       <div
         id="scroll-main"
         ref={editorScrollRef}
         className="panel-body ai-scroll flex-1 overflow-y-a editor-pane"
-        style={{ padding: '6px 60px' }}
+        style={{ padding: '20px 40px' }}
         onMouseDown={(e) => {
           // Empty-canvas clicks on the scroll pane (padding, gutters, space
           // below content). Place the caret on the nearest line — never force
@@ -119,7 +124,7 @@ export function EditorWorkspace({ onEditorReady }: EditorWorkspaceProps) {
           }
 
           const target = e.target as HTMLElement;
-          if (target.closest('textarea, input, button, a, [role="menu"], .block-insert-overlay')) return;
+          if (target.closest('textarea, input, button, a, [role="menu"], .block-insert-overlay, .editor-pane-title')) return;
 
           const editorDom = localEditor.view.dom;
           if (editorDom.contains(target)) return;

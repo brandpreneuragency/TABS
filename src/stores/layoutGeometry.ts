@@ -6,7 +6,8 @@
 
 export const ASSISTANT_MIN_PX = 320;
 export const PRIMARY_MIN_PX = 140;
-export const CENTER_MIN_PX = 140;
+/** Center editor / detail column floor when two primary panels are open. */
+export const CENTER_MIN_PX = 400;
 export const HANDLE_WIDTH_PX = 6;
 
 /** Contextual panel visual bounds (PRD 14.3). */
@@ -15,6 +16,45 @@ export const CONTEXT_MAX_PX = 420;
 
 export const KEYBOARD_RESIZE_STEP_PX = 16;
 export const KEYBOARD_RESIZE_STEP_LARGE_PX = 48;
+
+/** Primary floor when context + center are both visible. */
+export const TWO_PANEL_PRIMARY_MIN_PX =
+  CONTEXT_MIN_PX + HANDLE_WIDTH_PX + CENTER_MIN_PX;
+
+/** Primary min used when clamping the assistant against shell width. */
+export function primaryMinPxForContext(contextPanelVisible: boolean): number {
+  return contextPanelVisible ? TWO_PANEL_PRIMARY_MIN_PX : PRIMARY_MIN_PX;
+}
+
+/**
+ * When the main handle changes primary width, split the delta equally between
+ * context and center. If center would drop below CENTER_MIN_PX, pin it and give
+ * the rest of the delta to context (then clamp context to its visual range).
+ */
+export function contextWidthAfterAssistantResizePx(args: {
+  startContextPx: number;
+  startPrimaryPx: number;
+  nextPrimaryPx: number;
+  handleWidthPx?: number;
+  startCenterPx?: number;
+}): number {
+  const handle = args.handleWidthPx ?? HANDLE_WIDTH_PX;
+  const startCenter =
+    args.startCenterPx ??
+    args.startPrimaryPx - args.startContextPx - handle;
+  const delta = args.nextPrimaryPx - args.startPrimaryPx;
+  const equalCenter = startCenter + delta / 2;
+  const equalContext = args.startContextPx + delta / 2;
+
+  if (equalCenter < CENTER_MIN_PX) {
+    return clampContextWidthPx(
+      args.nextPrimaryPx - handle - CENTER_MIN_PX,
+      args.nextPrimaryPx,
+      handle,
+    );
+  }
+  return clampContextWidthPx(equalContext, args.nextPrimaryPx, handle);
+}
 
 /**
  * Clamp assistant width in px against shell geometry.

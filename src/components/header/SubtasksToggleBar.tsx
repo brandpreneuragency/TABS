@@ -3,7 +3,6 @@ import { CheckCircle2, Circle, ArrowUpDown } from 'lucide-react';
 import { useUIStore } from '../../stores/uiStore';
 import { useTaskStore } from '../../stores/taskStore';
 import { TaskMetadataControls } from '../taskManager/TaskMetadataControls';
-import { ContextPanelToggle } from '../layout/workspace';
 import { TASK_TITLE_MAX_LENGTH } from '../../types';
 
 export function SubtasksToggleBar() {
@@ -39,15 +38,7 @@ export function SubtasksToggleBar() {
   if (activeTaskPage === 'projects') return null;
   // No selected task: keep the context-panel toggle reachable above the empty state.
   if (!activeTask) {
-    return (
-      <div className="subtasks-toggle-bar">
-        <div className="subtasks-toggle-bar-inner">
-          <div className="subtasks-toggle-bar-row">
-            <ContextPanelToggle mode="tasks" available />
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const startEditingTitle = () => {
@@ -124,10 +115,7 @@ export function SubtasksToggleBar() {
               {activeTask?.title || 'Untitled task'}
             </button>
           )}
-        </div>
 
-        <div className="subtasks-toggle-bar-row">
-          <ContextPanelToggle mode="tasks" available />
           <TaskMetadataControls />
           <button
             type="button"

@@ -26,7 +26,7 @@ export function LeftNarrowSidebar() {
 
   return (
     <div id="nav-bar" className="nav-bar">
-      <div className="nav-section" style={{ width: 'fit-content', gap: 6, paddingTop: 6, paddingBottom: 6, borderTop: 'none' }}>
+      <div className="nav-section" style={{ width: 'fit-content', gap: 6, paddingTop: 0, paddingBottom: 0, borderTop: 'none' }}>
         <button
           id="nav-btn-documents"
           type="button"

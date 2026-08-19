@@ -583,7 +583,7 @@ export function ChatInput({ mode, threadId, workspaceId, taskId, settingsTab, re
   const promptOptions: PromptOption[] = mode === 'task' ? [...TASK_BUILT_INS, ...quickPrompts] : quickPrompts;
 
   return (
-    <div style={{ flexShrink: 0, paddingTop: '12px', paddingBottom: '12px', paddingLeft: '18px', paddingRight: '18px', height: 'fit-content' }}>
+    <div style={{ flexShrink: 0, padding: 0, height: 'fit-content' }}>
       {selectedText && (
         <div style={{ marginBottom: 8, fontSize: 'var(--fs-xs)', color: accentColor, background: 'var(--c-background-4)', borderRadius: 6, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="med">{t('chat.context')}</span>

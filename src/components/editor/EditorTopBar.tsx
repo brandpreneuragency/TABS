@@ -3,11 +3,14 @@ import type { Editor } from '@tiptap/react';
 import { Search, Undo2, Redo2, ChevronUp, ChevronDown, Replace, ReplaceAll, Save, Rainbow } from 'lucide-react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
-import { ContextPanelToggle } from '../layout/workspace';
 
 interface EditorTopBarProps {
   editor: Editor | null;
   onSave: (editor: Editor | null) => void;
+  /** Current document file name for the inline title */
+  fileName?: string;
+  /** Callback when title is committed */
+  onTitleCommit?: (newName: string) => void;
 }
 
 interface FindState {
@@ -20,7 +23,7 @@ interface DocSearchState {
   replaceText: string;
 }
 
-export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
+export function EditorTopBar({ editor, onSave, fileName, onTitleCommit }: EditorTopBarProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -28,6 +31,9 @@ export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
   const [searchStateByDoc, setSearchStateByDoc] = useState<Record<string, DocSearchState>>({});
   const findInputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(fileName ?? '');
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const activeWs = useWorkspaceStore((s) =>
     s.workspaces.find((w) => w.id === s.activeWorkspaceId) ?? null
@@ -35,9 +41,12 @@ export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
   const currentFile = activeWs?.currentFile ?? null;
   const rainbowMode = useUIStore((s) => s.rainbowMode);
   const toggleRainbowMode = useUIStore((s) => s.toggleRainbowMode);
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState('');
-  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep draft in sync when file changes
+  useEffect(() => {
+    setTitleDraft(fileName ?? '');
+    setIsEditingTitle(false);
+  }, [fileName]);
 
   useEffect(() => {
     if (isEditingTitle) {
@@ -49,18 +58,20 @@ export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
   }, [isEditingTitle]);
 
   const startEditingTitle = () => {
-    if (!currentFile) return;
-    setTitleDraft(currentFile.name);
+    setTitleDraft(fileName ?? '');
     setIsEditingTitle(true);
   };
 
   const commitTitle = () => {
-    // File names are managed by the file tree; title editing is disabled
-    // in the workspace model. This is kept for UI compatibility but does nothing.
+    const next = titleDraft.trim();
+    if (next && next !== fileName) {
+      onTitleCommit?.(next);
+    }
     setIsEditingTitle(false);
   };
 
   const cancelTitleEdit = () => {
+    setTitleDraft(fileName ?? '');
     setIsEditingTitle(false);
   };
 
@@ -187,7 +198,6 @@ export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
   return (
     <div id="editor-topbar" className="editor-topbar">
       <div className="editor-topbar-col">
-        <ContextPanelToggle mode="documents" available />
         <button
           id="editor-topbar-save"
           type="button"
@@ -201,14 +211,15 @@ export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
         >
           <Save size={14} />
         </button>
-        {currentFile && (
-          isEditingTitle ? (
+        <div className="editor-topbar-title-wrapper" style={{ flex: 1, minWidth: 0 }}>
+          {isEditingTitle ? (
             <input
               ref={titleInputRef}
               className="ctrl-xs editor-topbar-title-input"
               value={titleDraft}
               title="File name"
               placeholder="File name"
+              aria-label="Document title"
               onChange={(e) => setTitleDraft(e.target.value)}
               onBlur={commitTitle}
               onKeyDown={(e) => {
@@ -227,12 +238,12 @@ export function EditorTopBar({ editor, onSave }: EditorTopBarProps) {
               type="button"
               className="ctrl-xs editor-topbar-title"
               onClick={startEditingTitle}
-              title={currentFile.name}
+              title={fileName || 'Untitled'}
             >
-              {currentFile.name || 'Untitled'}
+              {fileName || 'Untitled'}
             </button>
-          )
-        )}
+          )}
+        </div>
       </div>
       <div className="editor-topbar-col editor-topbar-col--right">
         <button

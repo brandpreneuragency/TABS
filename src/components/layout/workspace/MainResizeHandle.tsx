@@ -6,14 +6,17 @@ import { useUIStore } from '../../../stores/uiStore';
 interface MainResizeHandleProps {
   shellRef: RefObject<HTMLElement | null>;
   assistantRef: RefObject<HTMLElement | null>;
+  primaryRef: RefObject<HTMLElement | null>;
   swapped: boolean;
 }
 
-/** Main resize handle between primary and assistant wrappers. Always resizes assistant. */
-export function MainResizeHandle({ shellRef, assistantRef, swapped }: MainResizeHandleProps) {
+/** Main resize handle between primary and assistant wrappers. Always resizes assistant.
+ *  When primary has two panels, leftover width is taken from the left/context panel. */
+export function MainResizeHandle({ shellRef, assistantRef, primaryRef, swapped }: MainResizeHandleProps) {
   const { onPointerDown, onKeyDown } = useAssistantResize({
     shellRef,
     assistantRef,
+    primaryRef,
     swapped,
   });
   const widthVw = useUIStore((s) => s.assistantWrapperWidth);

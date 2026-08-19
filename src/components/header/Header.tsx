@@ -1,5 +1,6 @@
-import { ArrowLeftRight, PanelLeft, PanelRight } from 'lucide-react';
+import { ArrowLeftRight, PanelRight } from 'lucide-react';
 import { TabBar } from './TabBar';
+import { ContextPanelToggle } from '../layout/workspace';
 import { selectCanSwapWrappers, useUIStore } from '../../stores/uiStore';
 
 export function Header() {
@@ -8,27 +9,11 @@ export function Header() {
   const wrappersSwapped = useUIStore((s) => s.wrappersSwapped);
   const toggleWrappersSwapped = useUIStore((s) => s.toggleWrappersSwapped);
   const canSwapWrappers = useUIStore(selectCanSwapWrappers);
-  const primaryWrapperOpen = useUIStore((s) => s.primaryWrapperOpen);
-  const togglePrimaryWrapper = useUIStore((s) => s.togglePrimaryWrapper);
 
-  const workspaceLabel = primaryWrapperOpen ? 'Hide workspace' : 'Show workspace';
   const assistantLabel = assistantOpen ? 'Hide assistant' : 'Show assistant';
   const swapLabel = wrappersSwapped
     ? 'Restore workspace and assistant order'
     : 'Swap workspace and assistant';
-
-  const handlePrimaryToggle = () => {
-    const primaryEl = document.getElementById('primary-workspace-wrapper');
-    const focusInside = Boolean(
-      primaryWrapperOpen && primaryEl?.contains(document.activeElement),
-    );
-    togglePrimaryWrapper();
-    if (focusInside) {
-      requestAnimationFrame(() => {
-        document.getElementById('header-btn-workspace')?.focus();
-      });
-    }
-  };
 
   const handleAssistantToggle = () => {
     const assistantEl = document.getElementById('assistant-wrapper');
@@ -47,18 +32,7 @@ export function Header() {
     <div id="header-bar" className="header-bar">
       <TabBar />
       <div className="ai-toggle-col">
-        <button
-          id="header-btn-workspace"
-          type="button"
-          title={workspaceLabel}
-          aria-label={workspaceLabel}
-          aria-pressed={primaryWrapperOpen}
-          onMouseDown={(event) => event.stopPropagation()}
-          onClick={handlePrimaryToggle}
-          className={`ai-toggle-btn${primaryWrapperOpen ? ' ai-toggle-btn--on' : ''}`}
-        >
-          <PanelLeft size={16} />
-        </button>
+        <ContextPanelToggle variant="header" />
         <button
           id="header-btn-swap"
           type="button"

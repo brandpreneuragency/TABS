@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useUIStore } from '../../stores/uiStore';
-import { ContextPanelToggle, PrimaryWorkspaceContent } from '../layout/workspace';
+import { PrimaryWorkspaceContent } from '../layout/workspace';
 
 interface SettingsPanelsProps {
   leftMain?: ReactNode;
@@ -41,7 +41,6 @@ export function SettingsPanels({
       contextPanelId="settings-list-panel"
       contextPanelClassName="settings-context-column"
       contextPanelStyle={{ backgroundColor: 'var(--c-background-2)' }}
-      leadingControls={<ContextPanelToggle mode="settings" available />}
     />
   );
 }

@@ -45,7 +45,7 @@ export function TaskMetadataControls() {
   }, [showProjectPicker]);
 
   return (
-    <div className="tdp-meta-controls row-xs items-center justify-start">
+    <div className="tdp-meta-controls row-xs items-center justify-start nowrap">
       <div ref={dateRef} className="tdp-meta-field">
         <button
           type="button"

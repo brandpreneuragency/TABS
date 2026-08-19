@@ -1,4 +1,4 @@
-// General appearance settings (text size, app font family, language) extracted
+// General appearance settings (text size, app font family, language, default folder) extracted
 // from the (now removed) SettingsModal so both PageTemplatePage (page mode) and
 // the new Settings → Appearance sub-tab can reuse it without a modal wrapper.
 
@@ -6,6 +6,8 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../stores/uiStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { isNativeFsAvailable, openFolderDialog } from '../../services/fs-adapter';
 
 const FONT_FAMILIES = ['Inter', 'Georgia', 'Arial', 'Verdana', 'Trebuchet MS'];
 
@@ -16,9 +18,24 @@ export function SettingsContent() {
     editorFontSize, setEditorFontSize,
     language, setLanguage,
   } = useUIStore();
+  const defaultFolderPath = useWorkspaceStore((s) => s.defaultFolderPath);
+  const setDefaultFolderPath = useWorkspaceStore((s) => s.setDefaultFolderPath);
 
   const [fontOpen, setFontOpen] = useState(false);
+  const [pickingFolder, setPickingFolder] = useState(false);
   const fontRef = useRef<HTMLDivElement>(null);
+  const canPickFolder = isNativeFsAvailable();
+
+  const handleChooseDefaultFolder = async () => {
+    if (!canPickFolder || pickingFolder) return;
+    setPickingFolder(true);
+    try {
+      const picked = await openFolderDialog();
+      if (picked) await setDefaultFolderPath(picked);
+    } finally {
+      setPickingFolder(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -93,6 +110,59 @@ export function SettingsContent() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Default workspace folder */}
+          <div style={{ marginBottom: 12 }}>
+            <label className="subtle" style={{ fontSize: 'var(--fs-base)', display: 'block', marginBottom: 6 }}>
+              {t('settings.defaultFolder')}
+            </label>
+            <p className="subtle" style={{ fontSize: 'var(--fs-base)', margin: '0 0 8px' }}>
+              {t('settings.defaultFolderHint')}
+            </p>
+            <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+              <span
+                className="ctrl"
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
+                  fontSize: 'var(--fs-base)',
+                  color: defaultFolderPath ? 'var(--c-text-1)' : 'var(--c-text-3)',
+                }}
+                title={defaultFolderPath ?? undefined}
+              >
+                {defaultFolderPath ?? t('settings.defaultFolderNone')}
+              </span>
+              <button
+                type="button"
+                className="btn"
+                style={{ fontSize: 'var(--fs-base)', flexShrink: 0 }}
+                onClick={() => void handleChooseDefaultFolder()}
+                disabled={!canPickFolder || pickingFolder}
+              >
+                {defaultFolderPath ? t('settings.defaultFolderChange') : t('settings.defaultFolderChoose')}
+              </button>
+              {defaultFolderPath && (
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ fontSize: 'var(--fs-base)', flexShrink: 0 }}
+                  onClick={() => void setDefaultFolderPath(null)}
+                  disabled={pickingFolder}
+                >
+                  {t('settings.defaultFolderClear')}
+                </button>
+              )}
+            </div>
+            {!canPickFolder && (
+              <p className="subtle" style={{ fontSize: 'var(--fs-base)', marginTop: 6 }}>
+                {t('settings.defaultFolderUnavailable')}
+              </p>
+            )}
           </div>
 
           {/* Language */}

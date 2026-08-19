@@ -7,6 +7,7 @@ import {
   migrateLayoutStateFromStored,
   selectActiveWorkspaceMode,
   selectCanSwapWrappers,
+  selectIsContextPanelAvailable,
   selectIsContextPanelOpen,
   DEFAULT_CONTEXT_PANEL_OPEN_BY_MODE,
 } from './uiLayoutState';
@@ -133,6 +134,60 @@ describe('selectIsContextPanelOpen', () => {
       contextPanelOpenByMode: { ...DEFAULT_CONTEXT_PANEL_OPEN_BY_MODE, documents: true },
     });
     expect(open).toBe(true);
+  });
+});
+
+describe('selectIsContextPanelAvailable', () => {
+  const base = {
+    taskMode: false,
+    crmMode: false,
+    activeCRMPage: 'leads',
+    activeView: 'document' as const,
+    activeTaskPage: 'list',
+  };
+
+  it('is available in documents', () => {
+    expect(selectIsContextPanelAvailable(base)).toBe(true);
+  });
+
+  it('is hidden on Task Projects', () => {
+    expect(
+      selectIsContextPanelAvailable({
+        ...base,
+        taskMode: true,
+        activeTaskPage: 'projects',
+      }),
+    ).toBe(false);
+  });
+
+  it('is available on Task List', () => {
+    expect(
+      selectIsContextPanelAvailable({
+        ...base,
+        taskMode: true,
+        activeTaskPage: 'list',
+      }),
+    ).toBe(true);
+  });
+
+  it('is hidden on CRM Pipeline', () => {
+    expect(
+      selectIsContextPanelAvailable({
+        ...base,
+        crmMode: true,
+        activeCRMPage: 'pipeline',
+      }),
+    ).toBe(false);
+  });
+
+  it('is available on CRM leads', () => {
+    expect(
+      selectIsContextPanelAvailable({
+        ...base,
+        crmMode: true,
+        activeCRMPage: 'leads',
+      }),
+    ).toBe(true);
   });
 });
 

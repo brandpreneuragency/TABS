@@ -28,10 +28,10 @@ export function CenterContentPanel({
         <div
           className="subtasks-bar-wrapper"
           style={{
-            paddingTop: '12px',
-            paddingBottom: '12px',
-            paddingLeft: '12px',
-            paddingRight: '12px',
+            paddingTop: '10px',
+            paddingBottom: '10px',
+            paddingLeft: '10px',
+            paddingRight: '10px',
             display: 'flex',
             alignItems: 'center',
             gap: 8,

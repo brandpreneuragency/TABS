@@ -2,6 +2,8 @@ import { useEffect, type ReactNode } from 'react';
 import {
   useUIStore,
   selectActiveWorkspaceMode,
+  selectIsContextPanelAvailable,
+  selectIsContextPanelOpen,
   type WorkspaceMode,
 } from '../../stores/uiStore';
 import { LeftNarrowSidebar } from './LeftNarrowSidebar';
@@ -12,7 +14,6 @@ import { SettingsDocument } from '../settings/SettingsDocument';
 import {
   WorkspaceShell,
   PrimaryWorkspaceContent,
-  ContextPanelToggle,
 } from './workspace';
 
 interface AppLayoutProps {
@@ -95,6 +96,9 @@ function UniversalWorkspaceShell({
   const activeCRMPage = useUIStore((s) => s.activeCRMPage);
   const activeSettingsSubTab = useUIStore((s) => s.activeSettingsSubTab);
   const mode = useUIStore(selectActiveWorkspaceMode);
+  const contextPanelVisible = useUIStore(
+    (s) => selectIsContextPanelAvailable(s) && selectIsContextPanelOpen(s),
+  );
 
   const layout = resolveModeLayout({
     mode,
@@ -137,6 +141,7 @@ function UniversalWorkspaceShell({
       wrappersSwapped={wrappersSwapped}
       assistantWrapperWidthVw={assistantWrapperWidth}
       assistantContentId={fileViewerOpen ? 'file-viewer-panel' : 'ai-sidebar-panel'}
+      contextPanelVisible={contextPanelVisible}
       primary={layout.primary}
       // Always pass body so CSS-hidden assistant keeps chat/file-viewer mounted.
       assistant={assistantBody}
@@ -189,7 +194,7 @@ function resolveModeLayout(args: {
           contextPanelOpen={contextPanelOpenByMode.documents}
           contextPanelWidthVw={contextPanelWidth}
           contextPanelId="file-tree-panel"
-          contextPanelStyle={{ paddingLeft: 12, paddingRight: 0 }}
+          contextPanelStyle={{ padding: '0 10px' }}
         />
       ),
     };
@@ -237,13 +242,8 @@ function resolveModeLayout(args: {
           contextPanelStyle={{
             paddingTop: 0,
             paddingBottom: 0,
-            backgroundColor: 'var(--c-background-1)',
+            backgroundColor: 'var(--c-background-2)',
           }}
-          leadingControls={
-            contextAvailable ? (
-              <ContextPanelToggle mode="crm" available />
-            ) : undefined
-          }
         />
       ),
     };
@@ -263,9 +263,8 @@ function resolveModeLayout(args: {
         contextPanelStyle={{
           paddingTop: 0,
           paddingBottom: 0,
-          backgroundColor: 'var(--c-background-1)',
+          backgroundColor: 'var(--c-background-2)',
         }}
-        leadingControls={<ContextPanelToggle mode="forms" available />}
       />
     ),
   };

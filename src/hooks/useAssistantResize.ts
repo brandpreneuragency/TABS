@@ -7,10 +7,29 @@ import {
   PRIMARY_MIN_PX,
   applyAssistantKeyboardDelta,
   clampAssistantWidthPx,
+  primaryMinPxForContext,
   pxToVw,
   vwToPx,
 } from '../stores/layoutGeometry';
 import { useUIStore } from '../stores/uiStore';
+
+function twoPanelPrimaryOpen(primaryEl: HTMLElement | null): boolean {
+  if (!primaryEl) return false;
+  const context = primaryEl.querySelector('[data-context-panel]');
+  const center = primaryEl.querySelector('#center-panel');
+  return Boolean(context && center);
+}
+
+function persistContextWidthFromDom(
+  primaryEl: HTMLElement | null,
+  setContextPanelWidth: (w: number, options?: { persist?: boolean }) => void,
+) {
+  const context = primaryEl?.querySelector('[data-context-panel]') as HTMLElement | null;
+  if (!context) return;
+  const widthPx = context.getBoundingClientRect().width;
+  if (!Number.isFinite(widthPx) || widthPx <= 0) return;
+  setContextPanelWidth(pxToVw(widthPx, window.innerWidth), { persist: true });
+}
 
 type ResizeKind = 'assistant' | 'context';
 
@@ -25,6 +44,9 @@ function setResizingState(kind: ResizeKind | null) {
 /**
  * Resize the assistant/detail wrapper. Always controls assistant width,
  * accounting for which physical side the assistant occupies.
+ * Two-panel primary layout shares leftover width equally in CSS
+ * (center floor 400px). This hook resizes the assistant and persists the
+ * leftover context width when done.
  * Uses explicit refs — never previousElementSibling / nextElementSibling.
  *
  * Drag: update in-memory width only; persist on pointerup/cancel.
@@ -33,10 +55,12 @@ function setResizingState(kind: ResizeKind | null) {
 export function useAssistantResize(options: {
   shellRef: RefObject<HTMLElement | null>;
   assistantRef: RefObject<HTMLElement | null>;
+  primaryRef?: RefObject<HTMLElement | null>;
   swapped: boolean;
 }) {
-  const { shellRef, assistantRef, swapped } = options;
+  const { shellRef, assistantRef, primaryRef, swapped } = options;
   const setAssistantWrapperWidth = useUIStore((s) => s.setAssistantWrapperWidth);
+  const setContextPanelWidth = useUIStore((s) => s.setContextPanelWidth);
   const dragging = useRef(false);
   const cleanupDrag = useRef<(() => void) | null>(null);
 
@@ -63,6 +87,8 @@ export function useAssistantResize(options: {
 
       const assistantRect = assistantEl.getBoundingClientRect();
       const handleWidth = handleEl.getBoundingClientRect().width || HANDLE_WIDTH_PX;
+      const twoPanel = twoPanelPrimaryOpen(primaryRef?.current ?? null);
+      const primaryMinPx = primaryMinPxForContext(twoPanel);
       const startX = e.clientX;
 
       // Offset from pointer to the moving (inner) edge of the assistant.
@@ -87,7 +113,12 @@ export function useAssistantResize(options: {
           : fixedEdge - movingEdge;
 
         const shellWidth = shellEl.getBoundingClientRect().width;
-        const clampedPx = clampAssistantWidthPx(newWidth, shellWidth, handleWidth);
+        const clampedPx = clampAssistantWidthPx(
+          newWidth,
+          shellWidth,
+          handleWidth,
+          primaryMinPx,
+        );
         // In-memory only during drag; persist on pointerup.
         setAssistantWrapperWidth(pxToVw(clampedPx, window.innerWidth), { persist: false });
       };
@@ -109,9 +140,11 @@ export function useAssistantResize(options: {
         handleEl.removeEventListener('pointerup', endDrag);
         handleEl.removeEventListener('pointercancel', endDrag);
         cleanupDrag.current = null;
-        // Persist final width.
         const current = useUIStore.getState().assistantWrapperWidth;
         setAssistantWrapperWidth(current, { persist: true });
+        if (twoPanel) {
+          persistContextWidthFromDom(primaryRef?.current ?? null, setContextPanelWidth);
+        }
       };
 
       cleanupDrag.current = () => endDrag();
@@ -119,7 +152,15 @@ export function useAssistantResize(options: {
       handleEl.addEventListener('pointerup', endDrag);
       handleEl.addEventListener('pointercancel', endDrag);
     },
-    [shellRef, assistantRef, swapped, setAssistantWrapperWidth, endDragSession],
+    [
+      shellRef,
+      assistantRef,
+      primaryRef,
+      swapped,
+      setAssistantWrapperWidth,
+      setContextPanelWidth,
+      endDragSession,
+    ],
   );
 
   const onKeyDown = useCallback(
@@ -131,16 +172,30 @@ export function useAssistantResize(options: {
       if (!shellEl) return;
 
       const step = e.shiftKey ? KEYBOARD_RESIZE_STEP_LARGE_PX : KEYBOARD_RESIZE_STEP_PX;
-      const currentVw = useUIStore.getState().assistantWrapperWidth;
-      const currentPx = vwToPx(currentVw, window.innerWidth);
+      const assistantEl = assistantRef.current;
+      const currentPx = assistantEl
+        ? assistantEl.getBoundingClientRect().width
+        : vwToPx(useUIStore.getState().assistantWrapperWidth, window.innerWidth);
       const nextRaw = applyAssistantKeyboardDelta(currentPx, e.key, swapped, step);
       const handleWidth =
         e.currentTarget.getBoundingClientRect().width || HANDLE_WIDTH_PX;
       const shellWidth = shellEl.getBoundingClientRect().width;
-      const clampedPx = clampAssistantWidthPx(nextRaw, shellWidth, handleWidth);
+      const twoPanel = twoPanelPrimaryOpen(primaryRef?.current ?? null);
+      const primaryMinPx = primaryMinPxForContext(twoPanel);
+      const clampedPx = clampAssistantWidthPx(
+        nextRaw,
+        shellWidth,
+        handleWidth,
+        primaryMinPx,
+      );
       setAssistantWrapperWidth(pxToVw(clampedPx, window.innerWidth), { persist: true });
+      if (twoPanel) {
+        requestAnimationFrame(() => {
+          persistContextWidthFromDom(primaryRef?.current ?? null, setContextPanelWidth);
+        });
+      }
     },
-    [shellRef, swapped, setAssistantWrapperWidth],
+    [shellRef, assistantRef, primaryRef, swapped, setAssistantWrapperWidth, setContextPanelWidth],
   );
 
   return {

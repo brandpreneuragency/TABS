@@ -95,11 +95,11 @@
   overflow-y: auto;
   resize: none;
   line-height: var(--line-normal);
-  padding-top: 18px;
+  padding-top: 14px;
   padding-bottom: 6px;
 }
 #chat-input.composer-textarea {
-  padding-top: 18px;
+  padding-top: 14px;
   padding-bottom: 0;
 }
 
@@ -138,7 +138,7 @@
 }
 #chat-input {
   border: none;
-  padding: 18px 18px 0;
+  padding: 14px 18px 0;
   /* Native resize handle is replaced by a custom top-right handle. */
   resize: none;
   max-height: 50vw;
@@ -280,11 +280,11 @@
   overflow-y: auto;
   resize: none;
   line-height: var(--line-normal);
-  padding-top: 18px;
+  padding-top: 14px;
   padding-bottom: 6px;
 }
 :root #chat-input.composer-textarea {
-  padding-top: 18px;
+  padding-top: 14px;
   padding-bottom: 0;
 }
 :root .chat-textarea {

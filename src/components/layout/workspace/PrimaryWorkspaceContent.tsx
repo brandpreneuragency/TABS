@@ -1,4 +1,9 @@
 import { useRef, type CSSProperties, type ReactNode } from 'react';
+import {
+  CENTER_MIN_PX,
+  CONTEXT_MAX_PX,
+  CONTEXT_MIN_PX,
+} from '../../../stores/layoutGeometry';
 import type { WorkspaceMode } from '../../../stores/uiLayoutState';
 import { ContextualPanel } from './ContextualPanel';
 import { ContextResizeHandle } from './ContextResizeHandle';
@@ -21,7 +26,8 @@ interface PrimaryWorkspaceContentProps {
 
 /**
  * Internal primary layout: optional contextual panel + context handle + center.
- * Contextual panel and center move together when the primary wrapper is swapped.
+ * Two-panel mode shares leftover width equally (1fr / 1fr). Center never goes
+ * below 400px; context never goes below 260px.
  */
 export function PrimaryWorkspaceContent({
   mode,
@@ -41,13 +47,26 @@ export function PrimaryWorkspaceContent({
   const primaryContentRef = useRef<HTMLDivElement>(null);
   const showContext = contextPanelAvailable && contextPanelOpen && contextPanel != null;
 
+  const rowStyle = {
+    ['--context-min-width' as string]: `${CONTEXT_MIN_PX}px`,
+    ['--context-max-width' as string]: `${CONTEXT_MAX_PX}px`,
+    ['--center-min-width' as string]: `${CENTER_MIN_PX}px`,
+    ['--context-panel-width' as string]: `clamp(${CONTEXT_MIN_PX}px, ${contextPanelWidthVw}vw, ${CONTEXT_MAX_PX}px)`,
+  } as CSSProperties;
+
   return (
-    <div ref={primaryContentRef} className="primary-workspace-content">
+    <div
+      ref={primaryContentRef}
+      className="primary-workspace-content"
+      data-two-panel={showContext ? 'true' : 'false'}
+      style={rowStyle}
+    >
       {showContext && (
         <ContextualPanel
           ref={contextRef}
           mode={mode}
           widthVw={contextPanelWidthVw}
+          fillRemaining={showContext}
           panelId={contextPanelId}
           className={contextPanelClassName}
           style={contextPanelStyle}

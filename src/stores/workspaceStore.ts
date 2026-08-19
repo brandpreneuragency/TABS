@@ -35,6 +35,12 @@ import {
   pickSaveTabsPath,
 } from '../services/fs-adapter';
 import { getFolderConnector } from '../services/runtime';
+import {
+  DEFAULT_WORKSPACE_FOLDER_SETTING_KEY,
+  isGeneratedWorkspaceName,
+  normalizeDefaultWorkspaceFolder,
+  workspaceNeedsDefaultFolder,
+} from './defaultWorkspaceFolder';
 
 // ── Re-export tree types so consumers can import from workspaceStore ──
 export type TreeNode = {
@@ -56,6 +62,15 @@ const toast = (msg: string) => useUIStore.getState().showToast(msg, 'error');
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+async function readDefaultFolderFromDb(): Promise<string | null> {
+  try {
+    const row = await db.settings.get(DEFAULT_WORKSPACE_FOLDER_SETTING_KEY);
+    return normalizeDefaultWorkspaceFolder(row?.value);
+  } catch {
+    return null;
+  }
 }
 
 // ── Tree-building utilities (moved from fileSystemStore) ──
@@ -262,6 +277,8 @@ interface WorkspaceStore {
   loading: boolean;
   error: string | null;
   folderCapability: 'unsupported' | 'available';
+  /** Absolute path of the folder empty workspaces should open with. */
+  defaultFolderPath: string | null;
 
   // ── Workspace lifecycle ──
   loadWorkspaces: () => Promise<void>;
@@ -283,7 +300,12 @@ interface WorkspaceStore {
   openFileFromViewer: (file: FileViewerItem) => Promise<void>;
 
   // ── Folder operations within workspace ──
-  connectFolderInWorkspace: (workspaceId: string, fullPath?: string) => Promise<ConnectedFolder | null>;
+  setDefaultFolderPath: (path: string | null) => Promise<void>;
+  connectFolderInWorkspace: (
+    workspaceId: string,
+    fullPath?: string,
+    opts?: { preserveName?: boolean },
+  ) => Promise<ConnectedFolder | null>;
   disconnectFolderInWorkspace: (workspaceId: string, folderId: string) => void;
   setActiveFolderInWorkspace: (workspaceId: string, folderId: string) => void;
   refreshWorkspaceDir: (workspaceId: string, dirPath: string) => Promise<void>;
@@ -379,14 +401,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   loading: false,
   error: null,
   folderCapability: isNativeFsAvailable() ? 'available' : 'unsupported',
+  defaultFolderPath: null,
 
   // ── Workspace lifecycle ──
 
   loadWorkspaces: async () => {
     try {
+      const defaultFolderPath = await readDefaultFolderFromDb();
+      set({ defaultFolderPath });
+
       const rawWorkspaces = await db.workspaces.toArray();
       if (rawWorkspaces.length === 0) {
-        // Start fresh: create one blank workspace
+        // Start fresh: create one workspace (picks up the default folder if set)
         const first = await get().createWorkspace();
         set({ workspaces: [first], activeWorkspaceId: first.id, isLoaded: true });
         return;
@@ -430,6 +456,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             ws.activeFolderId = validRefs[0]?.id ?? null;
           }
           await db.workspaces.put(ws);
+        }
+
+        if (workspaceNeedsDefaultFolder(folders, ws.connectedFolders, defaultFolderPath)) {
+          const folder = await rebuildFolderTree({ id: '0', path: defaultFolderPath });
+          if (folder) {
+            setConnectedFolders(ws.id, [folder]);
+            ws.connectedFolders = [{ id: folder.id, path: folder.path }];
+            ws.activeFolderId = folder.id;
+            if (isGeneratedWorkspaceName(ws.name)) {
+              ws.name = basename(defaultFolderPath);
+            }
+            await db.workspaces.put(ws);
+          }
         }
       }
 
@@ -485,7 +524,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activeWorkspaceId: ws.id,
     }));
     void db.settings.put({ key: 'lastActiveWorkspaceId', value: ws.id });
-    return ws;
+
+    const defaultPath = get().defaultFolderPath ?? (await readDefaultFolderFromDb());
+    if (defaultPath) {
+      await get().connectFolderInWorkspace(ws.id, defaultPath);
+    }
+
+    return get().workspaces.find((w) => w.id === ws.id) ?? ws;
   },
 
   deleteWorkspace: async (id) => {
@@ -893,7 +938,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   // ── Folder operations within workspace ──
 
-  connectFolderInWorkspace: async (workspaceId, fullPath) => {
+  setDefaultFolderPath: async (path) => {
+    const normalized = normalizeDefaultWorkspaceFolder(path);
+    set({ defaultFolderPath: normalized });
+    await db.settings.put({
+      key: DEFAULT_WORKSPACE_FOLDER_SETTING_KEY,
+      value: normalized ?? '',
+    });
+    if (!normalized) return;
+    for (const ws of get().workspaces) {
+      if (!workspaceNeedsDefaultFolder(getConnectedFolders(ws), ws.connectedFolders, normalized)) {
+        continue;
+      }
+      await get().connectFolderInWorkspace(ws.id, normalized, {
+        preserveName: !isGeneratedWorkspaceName(ws.name),
+      });
+    }
+  },
+
+  connectFolderInWorkspace: async (workspaceId, fullPath, opts) => {
     // fullPath is optional (e.g. re-open a known path). Native/browser pickers
     // leave it undefined and use openFolderDialog instead.
     if (!fullPath && !isNativeFsAvailable()) {
@@ -936,9 +999,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const newFolders = [newFolder];
       setConnectedFolders(workspaceId, newFolders);
 
-      // Always rename the tab to the folder basename; reset tree UI state.
+      // Explicit picker connect always names the tab after the folder.
+      // Default-folder apply keeps a custom tab title.
       const updates: Partial<Workspace> = {
-        name,
+        ...(opts?.preserveName ? {} : { name }),
         connectedFolders: newFolders.map((f) => ({ id: f.id, path: f.path })),
         activeFolderId: id,
         expandedPaths: [],

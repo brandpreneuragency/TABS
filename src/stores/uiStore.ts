@@ -12,6 +12,7 @@ import {
   selectActiveWorkspaceMode as selectActiveWorkspaceModeImpl,
   selectCanSwapWrappers as selectCanSwapWrappersImpl,
   selectIsAssistantWrapperOpen as selectIsAssistantWrapperOpenImpl,
+  selectIsContextPanelAvailable as selectIsContextPanelAvailableImpl,
   selectIsContextPanelOpen as selectIsContextPanelOpenImpl,
   selectIsPrimaryWrapperOpen as selectIsPrimaryWrapperOpenImpl,
   ASSISTANT_WRAPPER_WIDTH_DEFAULT_VW,
@@ -250,6 +251,15 @@ export function selectIsContextPanelOpen(
   >,
 ): boolean {
   return selectIsContextPanelOpenImpl(state);
+}
+
+export function selectIsContextPanelAvailable(
+  state: Pick<
+    UIStore,
+    'taskMode' | 'crmMode' | 'activeCRMPage' | 'activeView' | 'activeTaskPage'
+  >,
+): boolean {
+  return selectIsContextPanelAvailableImpl(state);
 }
 
 export const useUIStore = create<UIStore>((set, get) => ({

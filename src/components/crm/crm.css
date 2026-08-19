@@ -508,7 +508,7 @@
   --kanban-card-footer-gap: 3px;
 
   position: relative;
-  background: var(--c-background-1);
+  background: var(--c-background-2);
   border: none;
   border-radius: 8px;
   padding: var(--kanban-card-pad-y) var(--kanban-card-pad-x) var(--kanban-card-pad-y) var(--kanban-card-pad-left);
@@ -524,10 +524,10 @@
   transition: background-color 0.15s, box-shadow 0.15s;
 }
 .crm-kanban-card:hover {
-  background: color-mix(in srgb, var(--c-background-1) 85%, var(--c-text-1) 8%);
+  background: color-mix(in srgb, var(--c-background-2) 85%, var(--c-text-1) 8%);
 }
 .crm-kanban-card--active {
-  background: color-mix(in srgb, var(--c-accent-center-panel) 14%, var(--c-background-1));
+  background: color-mix(in srgb, var(--c-accent-center-panel) 14%, var(--c-background-2));
   box-shadow: inset 2px 0 0 var(--c-accent-center-panel);
 }
 .crm-kanban-card--dragging {

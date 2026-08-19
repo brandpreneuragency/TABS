@@ -20,7 +20,7 @@ export function AppearanceSection() {
   const [activeCategory, setActiveCategory] = useState<string>(GENERAL_CATEGORY_ID);
 
   const categories: TokenCategory[] = useMemo(
-    () => [{ id: GENERAL_CATEGORY_ID, label: 'General', hint: 'Text size, font & language.', tokens: [] }, ...THEME_TOKEN_CATEGORIES],
+    () => [{ id: GENERAL_CATEGORY_ID, label: 'General', hint: 'Text size, font, language & default workspace folder.', tokens: [] }, ...THEME_TOKEN_CATEGORIES],
     [],
   );
   const active = categories.find((c) => c.id === activeCategory) ?? categories[0];

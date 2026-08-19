@@ -115,9 +115,9 @@
 
 .context-window-popover-card {
   width: fit-content;
-  border: 1px solid var(--c-border-1);
+  border: none;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--c-background-1) 94%, white 6%);
+  background: var(--c-background-3);
   overflow: hidden;
 }
 
@@ -128,8 +128,8 @@
   gap: 12px;
   width: 100%;
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--c-border-1);
-  background: color-mix(in srgb, var(--c-background-2) 86%, white 14%);
+  border-bottom: none;
+  background: var(--c-background-3);
 }
 
 .context-window-popover-heading {

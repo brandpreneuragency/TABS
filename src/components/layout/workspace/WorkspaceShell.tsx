@@ -2,7 +2,7 @@ import { useRef, type CSSProperties, type ReactNode } from 'react';
 import {
   ASSISTANT_MIN_PX,
   HANDLE_WIDTH_PX,
-  PRIMARY_MIN_PX,
+  primaryMinPxForContext,
 } from '../../../stores/layoutGeometry';
 import { PrimaryWorkspaceWrapper } from './PrimaryWorkspaceWrapper';
 import { AssistantWrapper } from './AssistantWrapper';
@@ -21,6 +21,8 @@ interface WorkspaceShellProps {
   assistant: ReactNode;
   /** id for #ai-sidebar-panel vs #file-viewer-panel (container queries). */
   assistantContentId?: string;
+  /** True when primary shows context + center (file tree, task list, …). */
+  contextPanelVisible?: boolean;
 }
 
 function resolveLayoutKind(
@@ -46,6 +48,7 @@ export function WorkspaceShell({
   primary,
   assistant,
   assistantContentId,
+  contextPanelVisible = false,
 }: WorkspaceShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const primaryRef = useRef<HTMLDivElement>(null);
@@ -53,16 +56,17 @@ export function WorkspaceShell({
 
   const layout = resolveLayoutKind(primaryWrapperOpen, assistantWrapperOpen);
   const bothOpen = layout === 'both';
-  // Desktop swapped placement only when both wrappers are open.
-  // Narrow viewports ignore this via CSS (PRD 6.17 / 16.2).
+  // Swapped placement only when both wrappers are open. Grid areas keep
+  // this order at every viewport width.
   const swapped = bothOpen && wrappersSwapped;
 
+  const primaryMinPx = primaryMinPxForContext(contextPanelVisible);
   // Shell-relative max leaves primary minimum + handle. 100% is the shell grid.
-  const assistantWidthCss = `clamp(${ASSISTANT_MIN_PX}px, ${assistantWrapperWidthVw}vw, calc(100% - ${PRIMARY_MIN_PX}px - ${HANDLE_WIDTH_PX}px))`;
+  const assistantWidthCss = `clamp(${ASSISTANT_MIN_PX}px, ${assistantWrapperWidthVw}vw, calc(100% - ${primaryMinPx}px - ${HANDLE_WIDTH_PX}px))`;
 
   const style = {
     ['--assistant-wrapper-width' as string]: assistantWidthCss,
-    ['--primary-min-width' as string]: `${PRIMARY_MIN_PX}px`,
+    ['--primary-min-width' as string]: `${primaryMinPx}px`,
     ['--assistant-min-width' as string]: `${ASSISTANT_MIN_PX}px`,
     ['--shell-handle-width' as string]: `${HANDLE_WIDTH_PX}px`,
   } as CSSProperties;
@@ -86,6 +90,7 @@ export function WorkspaceShell({
         <MainResizeHandle
           shellRef={shellRef}
           assistantRef={assistantRef}
+          primaryRef={primaryRef}
           swapped={swapped}
         />
       )}

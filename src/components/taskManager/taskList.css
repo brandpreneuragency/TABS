@@ -136,11 +136,8 @@ button.task-item--on:hover {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background-color: var(--c-background-1);
-  padding-top: 18px;
-  padding-bottom: 6px;
-  padding-left: 18px;
-  padding-right: 12px;
+  background-color: transparent;
+  padding: 10px;
   min-width: 0;
 }
 
@@ -158,11 +155,11 @@ button.task-item--on:hover {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   text-align: center;
-  height: 20px;
+  height: 32px;
   background-color: var(--c-background-3);
   padding: 6px 0;
   margin: 0;
-  border-radius: 8px;
+  border-radius: 25px;
 }
 
 /* Category group headers (TODAY / THIS WEEK / NOT YET / COMPLETED) */
@@ -209,10 +206,7 @@ button.task-item--on:hover {
 #task-quick-create-footer {
   background-color: rgba(233, 233, 233, 0);
   border: none;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  padding-left: 18px;
-  padding-right: 18px;
+  padding: 10px;
 }
 #task-quick-create .composer-card {
   background: unset;
@@ -257,7 +251,7 @@ button.task-item--on:hover {
   min-width: 0;
   padding: 0;
   width: 100%;
-  height: fit-content;
+  height: 32px;
 }
 #task-quick-create .task-quick-create-send {
   display: flex;
@@ -359,9 +353,7 @@ button.task-item--on:hover {
   background-color: rgba(255, 255, 255, 0);
   border: none;
   outline: none;
-  padding-left: 18px;
-  padding-right: 18px;
-  padding-top: 18px;
+  padding: 14px;
   padding-bottom: 0;
   resize: none;
   overflow: hidden;
@@ -974,7 +966,7 @@ button.task-item--on:hover {
   outline: none;
   padding-left: 18px;
   padding-right: 18px;
-  padding-top: 18px;
+  padding-top: 14px;
   padding-bottom: 0;
   resize: none;
   overflow: hidden;
@@ -1200,10 +1192,7 @@ button.task-item--on:hover {
 :root #task-quick-create-footer {
   background-color: rgba(233, 233, 233, 0);
   border: none;
-  padding-top: 12px;
-  padding-bottom: 12px;
-  padding-left: 18px;
-  padding-right: 18px;
+  padding: 10px;
 }
 :root #task-quick-create .composer-card {
   background: unset;
@@ -1252,7 +1241,7 @@ button.task-item--on:hover {
   min-width: 0;
   padding: 0;
   width: 100%;
-  height: fit-content;
+  height: 32px;
 }
 :root #task-quick-create .task-quick-create-send {
   display: flex;
@@ -1354,9 +1343,7 @@ button.task-item--on:hover {
   background-color: rgba(255, 255, 255, 0);
   border: none;
   outline: none;
-  padding-left: 18px;
-  padding-right: 18px;
-  padding-top: 18px;
+  padding: 14px;
   padding-bottom: 0;
   resize: none;
   overflow: hidden;
