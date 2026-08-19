@@ -1,4 +1,4 @@
-import type { AgentApproval, AgentMessage, AgentRun, AgentRunStatus } from '../../types/agent';
+import type { AgentApproval, AgentClientCommand, AgentMessage, AgentRun, AgentRunStatus } from '../../types/agent';
 import { generateId } from './helpers';
 import { RunRepository } from './runRepository';
 import {
@@ -23,6 +23,17 @@ export interface RetryOptions {
   selectedContextRefs?: AgentRun['contextRefs'];
 }
 
+const COMMAND_FOR_EVENT: Partial<Record<RunTransitionEvent, AgentClientCommand>> = {
+  queue: 'run.queue',
+  pause: 'run.pause',
+  resume: 'run.resume',
+  cancel_safe_work: 'run.cancel',
+  cancel_mutation: 'run.cancel',
+  cancel_interrupted_safe_work: 'run.cancel',
+  review_resolved_queue: 'review.resolve',
+  review_resolved_cancel: 'review.resolve',
+};
+
 /**
  * Narrow command boundary for the run center and future runtime adapter.
  * React dispatches these commands; it never calculates lifecycle transitions.
@@ -38,6 +49,10 @@ export class AgentClient {
     this.clock = now;
   }
 
+  /**
+   * Materializes a new run already in `queued` status.
+   * AgentRunStatus has no persisted `new` row; create applies New|Queue|queued.
+   */
   create(run: AgentRun): Promise<AgentRun> {
     if (run.status !== 'queued') {
       throw new Error('New runs must be created in queued state.');
@@ -45,8 +60,24 @@ export class AgentClient {
     return this.repository.createRun(run, { command: 'run.create' });
   }
 
+  /**
+   * `run.queue` is idempotent for persisted queued runs.
+   * The plan's New→queued edge is applied at create time (no durable `new` status).
+   */
   async queue(runId: string): Promise<AgentRunStatus> {
-    return this.apply(runId, 'queue', 'run.queued');
+    const run = await this.requireRun(runId);
+    if (run.status === 'queued') {
+      await this.repository.updateRunWithEvent(
+        run.id,
+        { status: 'queued' },
+        'run.queued',
+        { command: 'run.queue', status: 'queued' },
+      );
+      return 'queued';
+    }
+    // Reject non-queued statuses — other paths use resume / review / recovery events.
+    transitionRun(run.status, 'queue');
+    return 'queued';
   }
 
   async submitInput(runId: string, options: SubmitInputOptions): Promise<AgentRun> {
@@ -69,7 +100,21 @@ export class AgentClient {
     return this.requireRun(run.id);
   }
 
-  pause(runId: string): Promise<AgentRunStatus> {
+  /**
+   * Pause request. Active `running` work only records `pauseRequestedAt`; the executor
+   * applies `pause_at_safe_boundary` when a safe boundary is reached.
+   */
+  async pause(runId: string): Promise<AgentRunStatus> {
+    const run = await this.requireRun(runId);
+    if (run.status === 'running') {
+      await this.repository.updateRunWithEvent(
+        run.id,
+        { pauseRequestedAt: this.clock() },
+        'run.status_changed',
+        { command: 'run.pause', pauseRequested: true, status: run.status },
+      );
+      return run.status;
+    }
     return this.apply(runId, 'pause', 'run.paused');
   }
 
@@ -77,12 +122,37 @@ export class AgentClient {
     return this.apply(runId, 'resume', 'run.resumed');
   }
 
-  cancel(runId: string, mutationInFlight: boolean): Promise<AgentRunStatus> {
-    return this.apply(
-      runId,
-      mutationInFlight ? 'cancel_mutation' : 'cancel_safe_work',
-      mutationInFlight ? 'run.status_changed' : 'run.cancelled',
+  /**
+   * Cancel mapping:
+   * - interrupted → cancel_interrupted_safe_work
+   * - mutation in flight (running) → cancel_mutation (+ cancelRequestedAt)
+   * - otherwise → cancel_safe_work
+   */
+  async cancel(runId: string, mutationInFlight: boolean): Promise<AgentRunStatus> {
+    const run = await this.requireRun(runId);
+    let event: RunTransitionEvent;
+    if (run.status === 'interrupted') {
+      event = 'cancel_interrupted_safe_work';
+    } else if (mutationInFlight) {
+      event = 'cancel_mutation';
+    } else {
+      event = 'cancel_safe_work';
+    }
+
+    const status = transitionRun(run.status, event);
+    const patch: Partial<AgentRun> = { status };
+    if (event === 'cancel_mutation') {
+      patch.cancelRequestedAt = this.clock();
+    }
+
+    const eventType = status === 'cancelled' ? 'run.cancelled' : 'run.status_changed';
+    await this.repository.updateRunWithEvent(
+      run.id,
+      patch,
+      eventType,
+      { command: 'run.cancel', status, mutationInFlight },
     );
+    return status;
   }
 
   retry(runId: string, options: RetryOptions = {}): Promise<AgentRun> {
@@ -118,6 +188,18 @@ export class AgentClient {
       outcome === 'queue' ? 'review_resolved_queue' : 'review_resolved_cancel',
       outcome === 'queue' ? 'run.queued' : 'run.cancelled',
     );
+  }
+
+  /** Title-only update; does not change lifecycle status. */
+  async rename(runId: string, title: string): Promise<AgentRun> {
+    const run = await this.requireRun(runId);
+    await this.repository.updateRunWithEvent(
+      run.id,
+      { title },
+      'run.status_changed',
+      { command: 'run.rename', title },
+    );
+    return this.requireRun(run.id);
   }
 
   archive(runId: string): Promise<void> {
@@ -205,11 +287,12 @@ export class AgentClient {
   ): Promise<AgentRunStatus> {
     const run = await this.requireRun(runId);
     const status = transitionRun(run.status, event);
+    const command = COMMAND_FOR_EVENT[event] ?? event;
     await this.repository.updateRunWithEvent(
       run.id,
       { status },
       eventType,
-      { command: event, status },
+      { command, status },
     );
     return status;
   }
