@@ -7,6 +7,11 @@ import type { Agent, AIProviderConfig, ModelItem, ModelReasoning, ProviderStatus
 import { db } from '../services/db';
 import { secureStorage } from '../services/secureStorage';
 import {
+  migrateHarnessCredentialsAndPreferences,
+  readSearchCredentials,
+  saveSearchCredentials,
+} from '../services/agent/credentialMigration';
+import {
   importProviderModels as fetchProviderModels,
   normalizeProviderBaseUrl,
   ProviderImportError,
@@ -218,6 +223,8 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   loadAISettings: async () => {
     try {
+      await migrateHarnessCredentialsAndPreferences();
+
       // Load agents from Dexie
       const agentsFromDb = await db.agents.toArray();
       const agents = agentsFromDb.length > 0
@@ -298,9 +305,9 @@ export const useAIStore = create<AIStore>((set, get) => ({
       // Refresh connection status from secure storage
       await Promise.all(
         providerConfigs.map(async (config) => {
-          const hasKey = config.apiKey
+          const hasKey = config.isActive && (config.apiKey
             ? Boolean(config.apiKey)
-            : await hasSecureKey(config.id);
+            : await hasSecureKey(config.id));
           const modelCount = (config.models ?? []).filter(
             (m) => !hiddenModels.includes(`${config.id}:${m.id}`),
           ).length;
@@ -380,6 +387,8 @@ export const useAIStore = create<AIStore>((set, get) => ({
         }
       }
 
+      const searchCredentials = await readSearchCredentials();
+
       set({
         agents,
         providerConfigs,
@@ -391,10 +400,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
         hiddenModels,
         taskModelDefaults,
         searchConfig: {
-          exaKey: String(settings['exaKey'] ?? ''),
-          tavilyKey: String(settings['tavilyKey'] ?? ''),
-          firecrawlKey: String(settings['firecrawlKey'] ?? ''),
-          braveKey: String(settings['braveKey'] ?? ''),
+          ...searchCredentials,
           enabled: Boolean(settings['enabled'] ?? false),
           searchProvider: (settings['searchProvider'] as SearchProvider) ?? 'tavily',
         },
@@ -471,13 +477,16 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   saveCustomProvider: async (config) => {
     const id = config.id || generateProviderId();
-    const normalized: AIProviderConfig = { ...config, id, provider: 'custom' };
+    const credential = config.apiKey;
+    const normalized: AIProviderConfig = { ...config, id, provider: 'custom', apiKey: '' };
     try {
-      await db.providerConfigs.put(normalized);
-
-      if (normalized.apiKey && normalized.apiKey.length > 0) {
-        await secureStorage.secureSet(providerApiKeyName(id), normalized.apiKey);
+      if (credential) {
+        await secureStorage.secureSet(providerApiKeyName(id), credential);
+        if ((await secureStorage.secureGet(providerApiKeyName(id))) !== credential) {
+          throw new Error('Could not verify the saved provider credential.');
+        }
       }
+      await db.providerConfigs.put(normalized);
 
       set((state) => {
         const providerConfigs = state.providerConfigs.map((candidate) =>
@@ -594,7 +603,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id });
-    void secureStorage.secureSet('activeProviderId', id).catch(() => undefined);
+    void db.settings.put({ key: 'activeProviderId', value: id }).catch(() => undefined);
   },
 
   getActiveProvider: () => {
@@ -614,7 +623,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
   setAppManagementProvider: async (id) => {
     set({ appManagementProviderId: id });
     try {
-      await secureStorage.secureSet('appManagementProviderId', id ?? '');
+      await db.settings.put({ key: 'appManagementProviderId', value: id ?? '' });
     } catch (err) {
       showError(err, 'Failed to save app management provider.');
     }
@@ -715,7 +724,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       hiddenModels,
     }));
     void db.providerConfigs.update(configId, { customModels, models, selectedModel }).catch(() => undefined);
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   toggleHiddenModel: (key) => {
@@ -724,7 +733,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       ? current.filter((candidate) => candidate !== key)
       : [...current, key];
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   setModelHidden: (providerId, modelId, hidden) => {
@@ -736,7 +745,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       ? [...current, key]
       : current.filter((k) => k !== key);
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   setProviderModelsHidden: (providerId, hidden) => {
@@ -752,13 +761,13 @@ export const useAIStore = create<AIStore>((set, get) => ({
       : withoutProviderModels;
 
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   setHiddenModels: (keys) => {
     const hiddenModels = Array.from(new Set(keys));
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   isModelHidden: (configId, modelSlug) => get().hiddenModels.includes(modelKey(configId, modelSlug)),
@@ -767,7 +776,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     const config = get().providerConfigs.find((p) => p.id === id);
     if (!config) return;
 
-    const hasKey = await hasSecureKey(id);
+    const hasKey = config.isActive && await hasSecureKey(id);
     const modelCount = (config.models ?? []).filter(
       (m) => !get().isModelHidden(id, m.id),
     ).length;
@@ -790,7 +799,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     const { providerConfigs, hiddenModels } = get();
     const updates = await Promise.all(
       providerConfigs.map(async (config) => {
-        const hasKey = await hasSecureKey(config.id);
+        const hasKey = config.isActive && await hasSecureKey(config.id);
         const modelCount = (config.models ?? []).filter(
           (m) => !hiddenModels.includes(`${config.id}:${m.id}`),
         ).length;
@@ -911,7 +920,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
         throw new Error(`Could not verify the saved API key for ${current.name}.`);
       }
       await db.providerConfigs.put(connected);
-      await secureStorage.secureSet('activeProviderId', id);
+      await db.settings.put({ key: 'activeProviderId', value: id });
       set((state) => ({
         activeProviderId: id,
         providerConfigs: state.providerConfigs.map((provider) =>
@@ -1003,7 +1012,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
     try {
       await db.providerConfigs.put(newConfig);
-      await secureStorage.secureSet('activeProviderId', id);
+      await db.settings.put({ key: 'activeProviderId', value: id });
     } catch (err) {
       // Best-effort cleanup of the written secret on persistence failure
       if (trimmedKey) {
@@ -1295,10 +1304,13 @@ export const useAIStore = create<AIStore>((set, get) => ({
   saveSearchConfig: async (config) => {
     set({ searchConfig: config });
     try {
-      await db.settings.put({ key: 'exaKey', value: config.exaKey });
-      await db.settings.put({ key: 'tavilyKey', value: config.tavilyKey });
-      await db.settings.put({ key: 'firecrawlKey', value: config.firecrawlKey });
-      await db.settings.put({ key: 'braveKey', value: config.braveKey });
+      await saveSearchCredentials(config);
+      await Promise.all([
+        db.settings.delete('exaKey'),
+        db.settings.delete('tavilyKey'),
+        db.settings.delete('firecrawlKey'),
+        db.settings.delete('braveKey'),
+      ]);
       await db.settings.put({ key: 'enabled', value: config.enabled });
       await db.settings.put({ key: 'searchProvider', value: config.searchProvider });
     } catch (err) {
