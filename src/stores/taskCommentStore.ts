@@ -5,7 +5,9 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type { TaskComment } from '../types';
 import { db } from '../services/db';
+import { localTaskOperation, taskService } from '../services/tasks/taskService';
 import { useUIStore } from './uiStore';
+import { useTaskStore } from './taskStore';
 import { getFileCategory, inferMimeTypeFromDataUrl } from '../utils/fileType';
 import { generateVideoThumbnailDataUrl } from '../utils/fileData';
 
@@ -146,14 +148,25 @@ export const useTaskCommentStore = create<TaskCommentStore>((set, get) => ({
     };
 
     try {
-      await db.taskComments.add(comment);
+      const task = await db.tasks.get(taskId);
+      if (!task) throw new Error('Task not found.');
+      const result = await taskService.addComment({
+        ...localTaskOperation('comment'),
+        ...comment,
+        expectedUpdatedAt: task.updatedAt,
+      });
+      const committedComment = result.comment;
+      if (!committedComment) throw new Error('Task comment was not committed.');
       set((s) => ({
         commentsByTask: {
           ...s.commentsByTask,
-          [taskId]: [...(s.commentsByTask[taskId] ?? []), comment],
+          [taskId]: [...(s.commentsByTask[taskId] ?? []), committedComment],
         },
       }));
-      return { comment };
+      useTaskStore.setState((state) => ({
+        tasks: state.tasks.map((item) => item.id === result.task.id ? result.task : item),
+      }));
+      return { comment: committedComment };
     } catch (err) {
       showError(err, 'Failed to send comment.');
       return { comment: null };
@@ -171,7 +184,7 @@ export const useTaskCommentStore = create<TaskCommentStore>((set, get) => ({
       return { commentsByTask: updated };
     });
     try {
-      await db.taskComments.update(id, updates);
+      await taskService.updateComment(id, updates.text ?? '');
     } catch (err) {
       set({ commentsByTask: previous });
       showError(err, 'Failed to update comment.');
@@ -187,7 +200,7 @@ export const useTaskCommentStore = create<TaskCommentStore>((set, get) => ({
       },
     }));
     try {
-      await db.taskComments.delete(id);
+      await taskService.deleteComment(id);
     } catch (err) {
       set((s) => ({
         commentsByTask: {
@@ -200,13 +213,7 @@ export const useTaskCommentStore = create<TaskCommentStore>((set, get) => ({
   },
 
   clearComments: async (taskId) => {
-    // Bulk-delete is not part of the v1 comment API; we leave this as a
-    // client-side clear so callers that used it (e.g. bulk resets) keep
-    // working. The actual rows are deleted from Dexie.
-    const comments = get().commentsByTask[taskId] ?? [];
-    for (const comment of comments) {
-      await db.taskComments.delete(comment.id).catch(() => undefined);
-    }
+    await taskService.clearComments(taskId);
     set((s) => ({ commentsByTask: { ...s.commentsByTask, [taskId]: [] } }));
   },
 

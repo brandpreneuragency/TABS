@@ -136,6 +136,7 @@ mod tests {
         assert_eq!(p, root.canonicalize().unwrap());
     }
 
+    #[cfg(windows)]
     #[test]
     fn accepts_absolute_path_inside_workspace() {
         let (_d, root) = make_workspace();
@@ -151,6 +152,7 @@ mod tests {
         assert_eq!(res, Err("PathOutsideWorkspace".to_string()));
     }
 
+    #[cfg(windows)]
     #[test]
     fn rejects_absolute_path_outside_workspace() {
         let (_d, root) = make_workspace();
@@ -158,6 +160,7 @@ mod tests {
         assert_eq!(res, Err("PathOutsideWorkspace".to_string()));
     }
 
+    #[cfg(windows)]
     #[test]
     fn rejects_drive_letter_outside_workspace() {
         let (_d, root) = make_workspace();

@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+pub mod agent_tools;
 pub mod ai_tools;
 mod commands;
 mod terminal;
@@ -103,6 +104,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(terminal::TerminalRegistry::new())
+        .manage(agent_tools::scope::WorkspaceScopeRegistry::new())
         .manage(PendingOpenFile(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -118,6 +120,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             test_notification,
             take_pending_open_file,
+            agent_tools::scope::agent_scope_register,
+            agent_tools::scope::agent_scope_reregister,
+            agent_tools::scope::agent_scope_revoke,
             commands::secrets::secret_get,
             commands::secrets::secret_set,
             commands::secrets::secret_delete,

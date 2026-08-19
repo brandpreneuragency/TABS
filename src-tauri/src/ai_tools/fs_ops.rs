@@ -1,13 +1,10 @@
 use std::fs;
 use std::io::Write;
-use std::path::Path;
 
-use crate::ai_tools::sandbox::resolve_in_workspace;
+use crate::agent_tools::scope::WorkspaceScopeRegistry;
 
 #[derive(serde::Serialize)]
 pub struct FileReadResult {
-    /// Content with `cat -n`-style line numbering applied by the frontend; here
-    /// we return the raw content and the line count for the caller to format.
     pub content: String,
     pub line_count: usize,
 }
@@ -22,33 +19,32 @@ pub struct FileEditResult {
     pub replacements: usize,
 }
 
-/// Read a file inside the workspace. Optional 1-based `offset` and `limit` slice
-/// the returned lines. `content` is returned as raw text; the frontend applies
-/// `cat -n` line numbering.
+/// Read a file through a frozen native workspace scope. Optional 1-based
+/// `offset` and `limit` slice the returned, numbered lines.
 #[tauri::command]
 pub fn ai_file_read(
-    workspace_root: String,
+    scopes: tauri::State<'_, WorkspaceScopeRegistry>,
+    scope_id: String,
     path: String,
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<FileReadResult, String> {
-    let root = Path::new(&workspace_root);
-    let full = resolve_in_workspace(root, &path)?;
+    let full = scopes.resolve(&scope_id, &path)?;
     if !full.is_file() {
         return Err(format!("not a file: {path}"));
     }
     let raw = fs::read_to_string(&full).map_err(|e| format!("read failed: {e}"))?;
     let lines: Vec<&str> = raw.lines().collect();
     let total = lines.len();
-    let start = offset.unwrap_or(1).saturating_sub(1);
+    let start = offset.unwrap_or(1).saturating_sub(1).min(total);
     let end = match limit {
-        Some(l) => (start + l).min(total),
+        Some(value) => start.saturating_add(value).min(total),
         None => total,
     };
-    let sliced: Vec<String> = lines[start..end.min(total)]
+    let sliced: Vec<String> = lines[start..end]
         .iter()
         .enumerate()
-        .map(|(i, l)| format!("{:>6}\t{}", start + i + 1, l))
+        .map(|(index, line)| format!("{:>6}\t{}", start + index + 1, line))
         .collect();
     Ok(FileReadResult {
         content: sliced.join("\n"),
@@ -56,48 +52,46 @@ pub fn ai_file_read(
     })
 }
 
-/// Write `content` to a file inside the workspace, creating parent directories.
-/// Uses an atomic tempfile + rename so a crash mid-write doesn't corrupt the file.
+/// Atomically write beneath a frozen native workspace scope.
 #[tauri::command]
 pub fn ai_file_write(
-    workspace_root: String,
+    scopes: tauri::State<'_, WorkspaceScopeRegistry>,
+    scope_id: String,
     path: String,
     content: String,
 ) -> Result<FileWriteResult, String> {
-    let root = Path::new(&workspace_root);
-    let full = resolve_in_workspace(root, &path)?;
+    let root = scopes.root(&scope_id)?;
+    let full = scopes.resolve(&scope_id, &path)?;
     if let Some(parent) = full.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("mkdir failed: {e}"))?;
     }
-    let dir = full
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| root.to_path_buf());
-    let mut tmp = tempfile::Builder::new()
+    let directory = full.parent().map(|path| path.to_path_buf()).unwrap_or(root);
+    let mut temporary = tempfile::Builder::new()
         .prefix(".tabs-write-")
-        .tempfile_in(&dir)
+        .tempfile_in(&directory)
         .map_err(|e| format!("tempfile failed: {e}"))?;
-    tmp.write_all(content.as_bytes())
+    temporary
+        .write_all(content.as_bytes())
         .map_err(|e| format!("temp write failed: {e}"))?;
-    tmp.persist(&full)
+    temporary
+        .persist(&full)
         .map_err(|e| format!("rename failed: {e}"))?;
     Ok(FileWriteResult {
-        bytes_written: content.as_bytes().len(),
+        bytes_written: content.len(),
     })
 }
 
-/// Replace `old` with `new` in a workspace file. If `replace_all` is false and
-/// `old` occurs more than once, returns an error so the model must disambiguate.
+/// Replace checked text beneath a frozen native workspace scope.
 #[tauri::command]
 pub fn ai_file_edit(
-    workspace_root: String,
+    scopes: tauri::State<'_, WorkspaceScopeRegistry>,
+    scope_id: String,
     path: String,
     old: String,
     new: String,
     replace_all: Option<bool>,
 ) -> Result<FileEditResult, String> {
-    let root = Path::new(&workspace_root);
-    let full = resolve_in_workspace(root, &path)?;
+    let full = scopes.resolve(&scope_id, &path)?;
     if !full.is_file() {
         return Err(format!("not a file: {path}"));
     }
@@ -119,6 +113,6 @@ pub fn ai_file_edit(
     };
     fs::write(&full, updated).map_err(|e| format!("write failed: {e}"))?;
     Ok(FileEditResult {
-        replacements: count,
+        replacements: if replace_all { count } else { 1 },
     })
 }

@@ -1,11 +1,10 @@
-use std::path::Path;
 use std::sync::mpsc;
 
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::sinks::UTF8;
 use grep_searcher::Searcher;
 
-use crate::ai_tools::sandbox::resolve_in_workspace;
+use crate::agent_tools::scope::WorkspaceScopeRegistry;
 
 #[derive(serde::Serialize)]
 pub struct GrepMatch {
@@ -14,76 +13,64 @@ pub struct GrepMatch {
     pub text: String,
 }
 
-/// Glob `pattern` (e.g. `**/*.rs`) relative to the workspace root (or `path` if
-/// given). Returns workspace-relative paths.
 #[tauri::command]
 pub fn ai_glob(
-    workspace_root: String,
+    scopes: tauri::State<'_, WorkspaceScopeRegistry>,
+    scope_id: String,
     pattern: String,
     path: Option<String>,
 ) -> Result<Vec<String>, String> {
-    let root = Path::new(&workspace_root);
-    let base = match path {
-        Some(p) => resolve_in_workspace(root, &p)?,
-        None => root.to_path_buf(),
-    };
-    let full_pattern = base.join(&pattern).to_string_lossy().replace('\\', "/");
+    let base_path = path.as_deref().unwrap_or("");
+    let full_pattern = scopes.scoped_glob_pattern(&scope_id, base_path, &pattern)?;
 
-    let mut out: Vec<String> = Vec::new();
+    let mut output = Vec::new();
     for entry in glob::glob(&full_pattern).map_err(|e| format!("bad glob: {e}"))? {
         match entry {
-            Ok(p) => out.push(relative_to(root, &p)),
-            Err(e) => return Err(format!("glob error: {e}")),
+            Ok(path) => output.push(scopes.relative_search_result(&scope_id, &path)?),
+            Err(error) => return Err(format!("glob error: {error}")),
         }
     }
-    out.sort();
-    Ok(out)
+    output.sort();
+    output.dedup();
+    Ok(output)
 }
 
-/// Grep `pattern` across the workspace (or `path` if given), optionally restricted
-/// by `glob` and case sensitivity. Returns matches with line numbers + text.
 #[tauri::command]
 pub fn ai_grep(
-    workspace_root: String,
+    scopes: tauri::State<'_, WorkspaceScopeRegistry>,
+    scope_id: String,
     pattern: String,
     path: Option<String>,
     glob: Option<String>,
     case_insensitive: Option<bool>,
 ) -> Result<Vec<GrepMatch>, String> {
-    let root = Path::new(&workspace_root);
-    let base = match path {
-        Some(p) => resolve_in_workspace(root, &p)?,
-        None => root.to_path_buf(),
-    };
+    let base = scopes.resolve(&scope_id, path.as_deref().unwrap_or(""))?;
+    let relative_base = scopes.relative_search_result(&scope_id, &base)?;
 
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(case_insensitive.unwrap_or(false))
         .build(&pattern)
         .map_err(|e| format!("bad regex: {e}"))?;
 
-    let (tx, rx) = mpsc::channel::<GrepMatch>();
-    let root_for_thread = root.to_path_buf();
-    let glob_for_thread = glob.clone();
-
+    let (sender, receiver) = mpsc::channel::<GrepMatch>();
+    let glob_filter = glob.clone();
     let mut searcher = Searcher::new();
     searcher
         .search_path(
             &matcher,
             &base,
-            UTF8(|lnum, line| {
-                // Honour the optional glob filter on the matched file path.
-                if let Some(g) = &glob_for_thread {
-                    let rel = relative_to(&root_for_thread, &base);
-                    if !glob::Pattern::new(g)
-                        .map(|p| p.matches(&rel))
-                        .unwrap_or(true)
+            UTF8(|line_number, line| {
+                if let Some(filter) = &glob_filter {
+                    if !glob::Pattern::new(filter)
+                        .map(|pattern| pattern.matches(&relative_base))
+                        .unwrap_or(false)
                     {
                         return Ok(true);
                     }
                 }
-                let _ = tx.send(GrepMatch {
-                    path: relative_to(&root_for_thread, &base),
-                    line: lnum as usize,
+                let _ = sender.send(GrepMatch {
+                    path: relative_base.clone(),
+                    line: line_number as usize,
                     text: line.trim_end_matches(['\n', '\r']).to_string(),
                 });
                 Ok(true)
@@ -91,17 +78,7 @@ pub fn ai_grep(
         )
         .map_err(|e| format!("grep failed: {e}"))?;
 
-    // The sender (`tx`) is owned by the sink closure, which is consumed by
-    // `search_path`, so it is dropped here — unblocking the receiver.
-    let mut matches: Vec<GrepMatch> = rx.iter().collect();
-    matches.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
+    let mut matches: Vec<GrepMatch> = receiver.iter().collect();
+    matches.sort_by(|left, right| left.path.cmp(&right.path).then(left.line.cmp(&right.line)));
     Ok(matches)
-}
-
-/// Return `p` relative to `root` as a forward-slash string.
-fn relative_to(root: &Path, p: &Path) -> String {
-    p.strip_prefix(root)
-        .unwrap_or(p)
-        .to_string_lossy()
-        .replace('\\', "/")
 }
