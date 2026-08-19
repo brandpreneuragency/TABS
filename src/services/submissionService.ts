@@ -24,6 +24,10 @@ import {
 } from './crmService';
 import type { CRMContact, CRMLead, CRMUtmData } from '../types/crm';
 import type { LeadForm, LeadFormSubmission } from '../types/forms';
+import type { AgentOperationReceipt } from '../types/agent';
+import { emitDomainChange } from './domainEvents';
+import { validateForm } from './formValidation';
+import type { CompanionOperation } from './crmFormsCommands';
 
 // CRM_FORMS_PUBLIC_CAPTURE_TODO:
 // Production embedded forms require a public VPS/API endpoint.
@@ -154,9 +158,71 @@ export function resolveDuplicate(params: {
 // Public ingestion entrypoint
 // ---------------------------------------------------------------------------
 
-export async function ingestSubmission(input: SubmissionInput): Promise<IngestionResult> {
+export async function ingestSubmission(
+  input: SubmissionInput,
+  operation: CompanionOperation = {
+    operationId: `submission:${nanoid(12)}`,
+    effectFingerprint: JSON.stringify(input),
+  },
+): Promise<IngestionResult> {
+  if (!operation.operationId.trim() || !operation.effectFingerprint.trim()) throw new Error('Operation identity is required.');
+  const prior = await crmFormsDb.agentOperationReceipts.where('operationId').equals(operation.operationId).first();
+  if (prior) {
+    if (prior.effectFingerprint !== operation.effectFingerprint) throw new Error('Operation replay effect mismatch.');
+    return prior.resultData as IngestionResult;
+  }
+  const result: IngestionResult = await crmFormsDb.transaction(
+    'rw',
+    [
+      crmFormsDb.forms,
+      crmFormsDb.formSubmissions,
+      crmFormsDb.crmContacts,
+      crmFormsDb.crmCompanies,
+      crmFormsDb.crmLeads,
+      crmFormsDb.crmActivities,
+      crmFormsDb.agentOperationReceipts,
+    ],
+    async () => {
+      const raced = await crmFormsDb.agentOperationReceipts.where('operationId').equals(operation.operationId).first();
+      if (raced) {
+        if (raced.effectFingerprint !== operation.effectFingerprint) throw new Error('Operation replay effect mismatch.');
+        return raced.resultData as IngestionResult;
+      }
+      const outcome = await ingestSubmissionTransaction(input);
+      const receipt: AgentOperationReceipt = {
+        id: `crm-forms-receipt:${operation.operationId}`,
+        operationId: operation.operationId,
+        effectFingerprint: operation.effectFingerprint,
+        domain: 'forms',
+        resourceKeys: [
+          `form:${input.formId}`,
+          `submission:${outcome.submission.id}`,
+          ...(outcome.contactId ? [`crm:contact:${outcome.contactId}`] : []),
+          ...(outcome.companyId ? [`crm:company:${outcome.companyId}`] : []),
+          ...(outcome.leadId ? [`crm:lead:${outcome.leadId}`] : []),
+        ],
+        status: 'committed',
+        resultSummary: `submission ${outcome.reason}`,
+        resultData: outcome,
+        committedAt: Date.now(),
+      };
+      await crmFormsDb.agentOperationReceipts.add(receipt);
+      return outcome;
+    },
+  );
+  emitDomainChange({ domain: 'forms', entityType: 'submission', entityId: result.submission.id, operation: 'created', revision: result.submission.createdAt, operationId: operation.operationId });
+  if (result.contactId) emitDomainChange({ domain: 'crm', entityType: 'contact', entityId: result.contactId, operation: result.created.contact ? 'created' : 'updated', revision: result.submission.createdAt, operationId: operation.operationId });
+  if (result.companyId && result.created.company) emitDomainChange({ domain: 'crm', entityType: 'company', entityId: result.companyId, operation: 'created', revision: result.submission.createdAt, operationId: operation.operationId });
+  if (result.leadId) emitDomainChange({ domain: 'crm', entityType: 'lead', entityId: result.leadId, operation: result.created.lead ? 'created' : 'updated', revision: result.submission.createdAt, operationId: operation.operationId });
+  return result;
+}
+
+async function ingestSubmissionTransaction(input: SubmissionInput): Promise<IngestionResult> {
   const ts = new Date().toISOString();
   const form = await crmFormsDb.forms.get(input.formId);
+  if (!form) throw new Error(`Form ${input.formId} was not found.`);
+  const validation = validateForm(form);
+  if (!validation.valid) throw new Error(`Invalid form: ${validation.issues.map((issue) => issue.message).join(' ')}`);
 
   const spamScore = computeSpamScore(input);
   const isSpam = spamScore >= SPAM_SCORE_THRESHOLD || (input.allowedDomainMatched === false && spamScore >= 40);

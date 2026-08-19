@@ -34,6 +34,18 @@ import type {
   CRMDashboardKPIs,
 } from '../types/crm';
 
+export {
+  CompanionOperationMismatchError,
+  CrmDuplicateError,
+  CrmFormsCommandService,
+  CrmRevisionConflictError,
+  crmFormsCommands,
+  normalizeCompanyDuplicateKey,
+  normalizeContactDuplicateKey,
+  normalizeLeadDuplicateKey,
+} from './crmFormsCommands';
+export type { CompanionOperation } from './crmFormsCommands';
+
 const OPEN_STAGES: CRMDealStage[] = ['new', 'contacted', 'qualified', 'proposal'];
 const WON_STAGES: CRMDealStage[] = ['won'];
 

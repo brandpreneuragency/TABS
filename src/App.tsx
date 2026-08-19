@@ -30,6 +30,7 @@ import { useFormsStore } from './stores/formsStore';
 import { useThemeStore } from './stores/themeStore';
 import { runStartupUpdateCheck } from './services/updater';
 import { loadReasoningOverlay } from './services/ai/reasoning';
+import { taskProjectionWorker } from './services/tasks/taskProjectionWorker';
 
 export default function App() {
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -84,6 +85,12 @@ export default function App() {
     loadProjects,
     loadThemeTokens,
   ]);
+
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    void taskProjectionWorker.start();
+    return () => taskProjectionWorker.stop();
+  }, []);
 
   // Listen for "Open with TABS" / argv file events from the Tauri shell.
   // Wait until workspaces are loaded so cold-start open does not race Dexie

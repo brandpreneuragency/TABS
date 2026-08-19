@@ -123,6 +123,7 @@ pub fn run() {
             agent_tools::scope::agent_scope_register,
             agent_tools::scope::agent_scope_reregister,
             agent_tools::scope::agent_scope_revoke,
+            agent_tools::task_projection::task_projection_apply,
             commands::secrets::secret_get,
             commands::secrets::secret_set,
             commands::secrets::secret_delete,

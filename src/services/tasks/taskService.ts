@@ -1,8 +1,15 @@
 import { nanoid } from 'nanoid';
-import type { Task, TaskComment, TaskImportance, TaskStatus } from '../../types';
+import type { Project, Task, TaskComment, TaskImportance, TaskStatus } from '../../types';
 import { TASK_TITLE_MAX_LENGTH } from '../../types';
 import type { AgentOperationReceipt } from '../../types/agent';
 import { db, type TabsDB } from '../db';
+import {
+  enqueueTaskProjection,
+  projectIndexPath,
+  serializeProjectIndex,
+  serializeTaskMarkdown,
+  taskProjectionPath,
+} from './taskProjectionWorker';
 
 export const TASK_UPDATE_FIELDS = [
   'title',
@@ -71,6 +78,12 @@ export interface TaskCommandResult {
   comment?: TaskComment;
   receipt: AgentOperationReceipt;
   replayed: boolean;
+}
+
+export interface ProjectProjectionInput extends OperationInput {
+  projectId: string;
+  name?: string;
+  color?: string;
 }
 
 export class TaskNotFoundError extends Error {
@@ -180,6 +193,56 @@ export class TaskService {
     this.clock = clock;
   }
 
+  private taskTransactionTables() {
+    return [
+      this.database.tasks,
+      this.database.projects,
+      this.database.taskComments,
+      this.database.agentOperationReceipts,
+      this.database.taskProjectionJobs,
+    ] as const;
+  }
+
+  private async enqueueTaskEffects(input: OperationInput, task: Task, previous?: Task): Promise<void> {
+    const now = this.clock();
+    const project = task.projectId ? await this.database.projects.get(task.projectId) : undefined;
+    const previousProject = previous?.projectId
+      ? await this.database.projects.get(previous.projectId)
+      : undefined;
+    const targetPath = taskProjectionPath(task, project);
+    const oldPath = previous ? taskProjectionPath(previous, previousProject) : undefined;
+    const comments = await this.database.taskComments.where('taskId').equals(task.id).toArray();
+    await enqueueTaskProjection(this.database, {
+      sourceOperationId: input.operationId,
+      taskId: task.id,
+      projectId: task.projectId ?? undefined,
+      projectionKey: `task:${task.id}`,
+      kind: task.deletedAt ? 'remove_path' : 'write_task',
+      desiredRevision: String(task.updatedAt),
+      targetPath,
+      stalePaths: oldPath ? [oldPath] : [],
+      serializedContent: task.deletedAt ? undefined : serializeTaskMarkdown(task, project, comments),
+    }, now);
+
+    const affectedProjectIds = new Set<string | null>([task.projectId]);
+    if (previous) affectedProjectIds.add(previous.projectId);
+    for (const projectId of affectedProjectIds) {
+      const affectedProject = projectId ? await this.database.projects.get(projectId) : undefined;
+      const tasks = projectId
+        ? await this.database.tasks.where('projectId').equals(projectId).toArray()
+        : await this.database.tasks.filter((item) => item.projectId === null).toArray();
+      await enqueueTaskProjection(this.database, {
+        sourceOperationId: input.operationId,
+        projectId: projectId ?? undefined,
+        projectionKey: `project-index:${projectId ?? 'inbox'}`,
+        kind: 'write_project_index',
+        desiredRevision: `${affectedProject?.name ?? 'Inbox'}:${Math.max(0, ...tasks.map((item) => item.updatedAt))}`,
+        targetPath: projectIndexPath(affectedProject),
+        serializedContent: serializeProjectIndex(affectedProject, tasks),
+      }, now);
+    }
+  }
+
   private async replay(input: OperationInput): Promise<TaskCommandResult | undefined> {
     requireOperation(input);
     const receipt = await this.database.agentOperationReceipts
@@ -232,11 +295,12 @@ export class TaskService {
       order: input.order ?? await this.database.tasks.count(),
     };
     const receipt = this.receipt(input, 'task created', task);
-    return this.database.transaction('rw', this.database.tasks, this.database.agentOperationReceipts, async () => {
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const raced = await this.replay(input);
       if (raced) return raced;
       await this.database.tasks.add(task);
       await this.database.agentOperationReceipts.add(receipt);
+      await this.enqueueTaskEffects(input, task);
       return { task, receipt, replayed: false };
     });
   }
@@ -264,13 +328,14 @@ export class TaskService {
       parentId: parent.id,
     };
     const receipt = this.receipt(input, 'subtask created', task);
-    return this.database.transaction('rw', this.database.tasks, this.database.agentOperationReceipts, async () => {
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const raced = await this.replay(input);
       if (raced) return raced;
       const currentParent = await this.database.tasks.get(input.parentId);
       if (!currentParent || currentParent.deletedAt) throw new TaskNotFoundError(input.parentId);
       await this.database.tasks.add(task);
       await this.database.agentOperationReceipts.add(receipt);
+      await this.enqueueTaskEffects(input, task);
       return { task, receipt, replayed: false };
     });
   }
@@ -279,7 +344,7 @@ export class TaskService {
     const replay = await this.replay(input);
     if (replay) return replay;
     const updates = normalizeUpdates(input.updates);
-    return this.database.transaction('rw', this.database.tasks, this.database.agentOperationReceipts, async () => {
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const raced = await this.replay(input);
       if (raced) return raced;
       const current = await this.database.tasks.get(input.taskId);
@@ -299,6 +364,7 @@ export class TaskService {
       if (changed) await this.database.tasks.put(task);
       const receipt = this.receipt(input, changed ? 'task updated' : 'task unchanged', task);
       await this.database.agentOperationReceipts.add(receipt);
+      await this.enqueueTaskEffects(input, task, current);
       return { task, receipt, replayed: false };
     });
   }
@@ -310,9 +376,7 @@ export class TaskService {
     if (!text && !input.attachmentDataUrl) throw new Error('A task comment needs text or an attachment.');
     return this.database.transaction(
       'rw',
-      this.database.tasks,
-      this.database.taskComments,
-      this.database.agentOperationReceipts,
+      ...this.taskTransactionTables(),
       async () => {
         const raced = await this.replay(input);
         if (raced) return raced;
@@ -340,6 +404,7 @@ export class TaskService {
         await this.database.taskComments.add(comment);
         await this.database.tasks.put(task);
         await this.database.agentOperationReceipts.add(receipt);
+        await this.enqueueTaskEffects(input, task, current);
         return { task, comment, receipt, replayed: false };
       },
     );
@@ -349,7 +414,7 @@ export class TaskService {
     const replay = await this.replay(input);
     if (replay) return replay;
     if (!input.reason.trim()) throw new Error('A soft-delete reason is required.');
-    return this.database.transaction('rw', this.database.tasks, this.database.agentOperationReceipts, async () => {
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const raced = await this.replay(input);
       if (raced) return raced;
       const current = await this.database.tasks.get(input.taskId);
@@ -362,29 +427,101 @@ export class TaskService {
       const receipt = this.receipt(input, 'task soft deleted', task);
       await this.database.tasks.put(task);
       await this.database.agentOperationReceipts.add(receipt);
+      await this.enqueueTaskEffects(input, task, current);
       return { task, receipt, replayed: false };
     });
   }
 
+  async createProjectProjection(project: Project, input: OperationInput): Promise<Project> {
+    requireOperation(input);
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
+      await this.database.projects.add(project);
+      await enqueueTaskProjection(this.database, {
+        sourceOperationId: input.operationId,
+        projectId: project.id,
+        projectionKey: `project-index:${project.id}`,
+        kind: 'write_project_index',
+        desiredRevision: `${project.name}:0`,
+        targetPath: projectIndexPath(project),
+        serializedContent: serializeProjectIndex(project, []),
+      }, this.clock());
+      return project;
+    });
+  }
+
+  async updateProjectProjection(input: ProjectProjectionInput): Promise<Project> {
+    requireOperation(input);
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
+      const current = await this.database.projects.get(input.projectId);
+      if (!current) throw new Error(`Project ${input.projectId} was not found.`);
+      const next: Project = {
+        ...current,
+        ...(input.name === undefined ? {} : { name: normalizeTitle(input.name) }),
+        ...(input.color === undefined ? {} : { color: input.color }),
+      };
+      await this.database.projects.put(next);
+      if (next.name !== current.name) {
+        const tasks = await this.database.tasks.where('projectId').equals(next.id).toArray();
+        const now = this.clock();
+        for (const task of tasks) {
+          const comments = await this.database.taskComments.where('taskId').equals(task.id).toArray();
+          await enqueueTaskProjection(this.database, {
+            sourceOperationId: input.operationId,
+            taskId: task.id,
+            projectId: next.id,
+            projectionKey: `task:${task.id}`,
+            kind: task.deletedAt ? 'remove_path' : 'write_task',
+            desiredRevision: String(task.updatedAt),
+            targetPath: taskProjectionPath(task, next),
+            stalePaths: [taskProjectionPath(task, current)],
+            serializedContent: task.deletedAt ? undefined : serializeTaskMarkdown(task, next, comments),
+          }, now);
+        }
+        await enqueueTaskProjection(this.database, {
+          sourceOperationId: input.operationId,
+          projectId: next.id,
+          projectionKey: `project-index:${next.id}`,
+          kind: 'write_project_index',
+          desiredRevision: `${next.name}:${Math.max(0, ...tasks.map((task) => task.updatedAt))}`,
+          targetPath: projectIndexPath(next),
+          stalePaths: [projectIndexPath(current)],
+          serializedContent: serializeProjectIndex(next, tasks),
+        }, now);
+      }
+      return next;
+    });
+  }
+
   async restoreTask(taskId: string): Promise<Task | undefined> {
-    return this.database.transaction('rw', this.database.tasks, async () => {
+    const operation = localTaskOperation('restore');
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const current = await this.database.tasks.get(taskId);
       if (!current) return undefined;
       const task = { ...current, deletedAt: undefined, updatedAt: nextUpdatedAt(current.updatedAt, this.clock) };
       await this.database.tasks.put(task);
+      await this.enqueueTaskEffects(operation, task, current);
       return task;
     });
   }
 
   async permanentlyDeleteTask(taskId: string): Promise<void> {
-    await this.database.transaction('rw', this.database.tasks, this.database.taskComments, async () => {
+    const operation = localTaskOperation('permanent-delete');
+    await this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
+      const current = await this.database.tasks.get(taskId);
+      if (!current) return;
       await this.database.taskComments.where('taskId').equals(taskId).delete();
       await this.database.tasks.delete(taskId);
+      const changedAt = nextUpdatedAt(current.updatedAt, this.clock);
+      await this.enqueueTaskEffects(
+        operation,
+        { ...current, updatedAt: changedAt, deletedAt: changedAt },
+        current,
+      );
     });
   }
 
   async reorderSubtasks(orderedIds: string[]): Promise<Task[]> {
-    return this.database.transaction('rw', this.database.tasks, async () => {
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const changed: Task[] = [];
       for (let order = 0; order < orderedIds.length; order += 1) {
         const id = orderedIds[order];
@@ -392,6 +529,7 @@ export class TaskService {
         if (!current || current.order === order) continue;
         const task = { ...current, order, updatedAt: nextUpdatedAt(current.updatedAt, this.clock) };
         await this.database.tasks.put(task);
+        await this.enqueueTaskEffects(localTaskOperation('reorder'), task, current);
         changed.push(task);
       }
       return changed;
@@ -400,33 +538,48 @@ export class TaskService {
 
   async updateComment(commentId: string, text: string): Promise<TaskComment | undefined> {
     const normalized = text.trim();
-    return this.database.transaction('rw', this.database.taskComments, this.database.tasks, async () => {
+    const operation = localTaskOperation('update-comment');
+    return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const comment = await this.database.taskComments.get(commentId);
       if (!comment) return undefined;
       const updated = { ...comment, text: normalized };
       await this.database.taskComments.put(updated);
       const task = await this.database.tasks.get(comment.taskId);
-      if (task) await this.database.tasks.put({ ...task, updatedAt: nextUpdatedAt(task.updatedAt, this.clock) });
+      if (task) {
+        const changed = { ...task, updatedAt: nextUpdatedAt(task.updatedAt, this.clock) };
+        await this.database.tasks.put(changed);
+        await this.enqueueTaskEffects(operation, changed, task);
+      }
       return updated;
     });
   }
 
   async deleteComment(commentId: string): Promise<void> {
-    await this.database.transaction('rw', this.database.taskComments, this.database.tasks, async () => {
+    const operation = localTaskOperation('delete-comment');
+    await this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const comment = await this.database.taskComments.get(commentId);
       if (!comment) return;
       await this.database.taskComments.delete(commentId);
       const task = await this.database.tasks.get(comment.taskId);
-      if (task) await this.database.tasks.put({ ...task, updatedAt: nextUpdatedAt(task.updatedAt, this.clock) });
+      if (task) {
+        const changed = { ...task, updatedAt: nextUpdatedAt(task.updatedAt, this.clock) };
+        await this.database.tasks.put(changed);
+        await this.enqueueTaskEffects(operation, changed, task);
+      }
     });
   }
 
   async clearComments(taskId: string): Promise<void> {
-    await this.database.transaction('rw', this.database.taskComments, this.database.tasks, async () => {
+    const operation = localTaskOperation('clear-comments');
+    await this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
       const count = await this.database.taskComments.where('taskId').equals(taskId).delete();
       if (count > 0) {
         const task = await this.database.tasks.get(taskId);
-        if (task) await this.database.tasks.put({ ...task, updatedAt: nextUpdatedAt(task.updatedAt, this.clock) });
+        if (task) {
+          const changed = { ...task, updatedAt: nextUpdatedAt(task.updatedAt, this.clock) };
+          await this.database.tasks.put(changed);
+          await this.enqueueTaskEffects(operation, changed, task);
+        }
       }
     });
   }
