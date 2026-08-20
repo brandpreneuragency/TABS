@@ -570,8 +570,18 @@ export class DocumentCommandService {
     }
 
     const normalizedTarget = normalizePath(targetPath);
+    const originalPath = normalizePath(buffer.path);
     const previousDisk = args.expectedRevision ?? this.diskRevisions.get(normalizedTarget);
     const exists = await this.files.exists(targetPath);
+    if (exists && (args.forceSaveAs || (normalizedTarget !== originalPath && isVirtualPath(buffer.path)))) {
+      let currentRevision = 'sha256:unavailable';
+      try {
+        currentRevision = await computeRevision(await this.files.readText(targetPath));
+      } catch {
+        // Preserve an explicit structured collision even for unreadable targets.
+      }
+      return { status: 'conflict', reason: 'path_collision', currentRevision };
+    }
     if (exists && previousDisk) {
       try {
         const onDisk = await computeRevision(await this.files.readText(targetPath));
