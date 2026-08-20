@@ -157,6 +157,8 @@ export interface DocumentWorkspaceAccess {
 export interface SaveDocumentArgs {
   workspaceId: string;
   expectedRevision?: string;
+  /** Correlates the committed save with the caller's mutation receipt. */
+  operationId?: string;
   forceSaveAs?: boolean;
   pickSavePath?: () => Promise<string | null>;
   writeFile?: (path: string, content: string) => Promise<void>;
@@ -442,6 +444,20 @@ export class DocumentCommandService {
     }
 
     if (args.target.kind === 'draft') {
+      const open = this.openBuffer(args.workspaceId);
+      if (
+        open?.isDirty &&
+        (open.path === draftPathFor(args.workspaceId) || open.path.startsWith(DRAFT_PATH_PREFIX))
+      ) {
+        return {
+          ok: false,
+          status: 'conflict',
+          reason: 'dirty_buffer',
+          currentRevision: await computeRevision(open.content),
+          content: open.content,
+          documentId: draftDocumentId(args.workspaceId),
+        };
+      }
       const documentId = draftDocumentId(args.workspaceId);
       const path = draftPathFor(args.workspaceId);
       const revision = await computeRevision(args.content);
@@ -609,9 +625,7 @@ export class DocumentCommandService {
     }
     this.diskRevisions.set(normalizedTarget, diskRevision);
 
-    const documentId = isVirtualPath(buffer.path)
-      ? draftDocumentId(args.workspaceId)
-      : absoluteDocumentId(targetPath);
+    const documentId = absoluteDocumentId(targetPath);
     const snapshot: DocumentSnapshot = {
       documentId,
       workspaceId: args.workspaceId,
@@ -625,7 +639,7 @@ export class DocumentCommandService {
       isDirty: false,
     };
     this.remember(snapshot);
-    this.emit(snapshot, 'updated');
+    this.emit(snapshot, 'updated', args.operationId);
     return { status: 'saved', path: targetPath, revision: snapshot.revision, documentId };
   }
 

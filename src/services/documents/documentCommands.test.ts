@@ -154,6 +154,32 @@ describe('DocumentCommandService', () => {
     expect(events).toEqual([]);
   });
 
+  it('returns a structured conflict when save hits a stale disk revision', async () => {
+    await service.switchDocument({
+      workspaceId: 'ws-1',
+      nextPath: NOTES,
+      nextName: 'notes.md',
+    });
+    files.store.set(NOTES, 'changed on disk');
+    open.current = {
+      path: NOTES,
+      name: 'notes.md',
+      content: 'editor save',
+      isDirty: true,
+    };
+    const outcome = await service.saveDocument({
+      workspaceId: 'ws-1',
+      expectedRevision: await computeRevision('disk version\nline two\nline three'),
+    });
+    expect(outcome).toMatchObject({
+      status: 'conflict',
+      reason: 'stale_revision',
+      currentRevision: await computeRevision('changed on disk'),
+    });
+    expect(files.store.get(NOTES)).toBe('changed on disk');
+    expect(events).toEqual([]);
+  });
+
   it('emits one domain change after a successful draft create and file update', async () => {
     const draft = await service.createDocument({
       workspaceId: 'ws-1',
@@ -242,6 +268,64 @@ describe('DocumentCommandService', () => {
     expect(updated.ok).toBe(true);
     expect(files.store.get(NOTES)).toBe('changed\nline two\nline three');
     expect(events).toHaveLength(1);
+  });
+
+  it('rejects draft creation while a dirty draft buffer is open', async () => {
+    open.current = {
+      path: '__draft__:ws-1',
+      name: 'Untitled',
+      content: 'user draft',
+      isDirty: true,
+    };
+    const result = await service.createDocument({
+      workspaceId: 'ws-1',
+      title: 'Follow-up',
+      content: 'agent draft',
+      expectedWorkspaceRevision: await service.currentWorkspaceRevision('ws-1'),
+      target: { kind: 'draft' },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'conflict',
+      reason: 'dirty_buffer',
+      content: 'user draft',
+    });
+    expect(open.current?.content).toBe('user draft');
+    expect(events).toEqual([]);
+  });
+
+  it('rejects create when the workspace revision is stale', async () => {
+    const result = await service.createDocument({
+      workspaceId: 'ws-1',
+      title: 'stale.md',
+      content: 'nope',
+      expectedWorkspaceRevision: 'sha256:deadbeef',
+      target: { kind: 'draft' },
+    });
+    expect(result).toMatchObject({ ok: false, status: 'conflict', reason: 'workspace_revision' });
+    expect(events).toEqual([]);
+  });
+
+  it('rejects replace_text when the match count does not match', async () => {
+    const read = await service.readDocument({
+      workspaceId: 'ws-1',
+      target: { scopeId: SCOPE_ID, relativePath: 'notes.md' },
+    });
+    const mismatch = await service.updateDocument({
+      workspaceId: 'ws-1',
+      documentId: read.documentId,
+      expectedRevision: read.revision,
+      edit: {
+        kind: 'replace_text',
+        oldText: 'missing',
+        newText: 'changed',
+        replaceAll: false,
+        expectedMatchCount: 1,
+      },
+    });
+    expect(mismatch).toMatchObject({ ok: false, status: 'conflict', reason: 'edit_mismatch' });
+    expect(files.store.get(NOTES)).toBe('disk version\nline two\nline three');
+    expect(events).toEqual([]);
   });
 
   it('blocks dirty switching and creates a file only through a native scope ID', async () => {

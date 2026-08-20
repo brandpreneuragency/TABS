@@ -146,10 +146,9 @@ check_commit_files() {
     done < "$_paths"
     [ -z "$MISSING" ] \
         || fail "commit_files does not name every path this phase changed. Missing:$MISSING"
-    # No negative assertion here. The automatic doctor commits with `git add -A`,
-    # so on a retry this phase's own work is already in HEAD and the tree is
-    # clean while commit_files still correctly names what the phase authored.
-    # Failing on that is unrecoverable: the worker can never satisfy it.
+    if [ "$SEEN" -eq 0 ] && [ "$DECLARED" != "none" ]; then
+        fail "commit_files names paths but the working tree has no change. Record 'none' or do the work."
+    fi
 }
 
 # ---------------------------------------------------------------------------

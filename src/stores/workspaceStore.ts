@@ -1418,8 +1418,9 @@ subscribeToDomainChanges((event) => {
   if (!ws) return;
   const current = ws.currentFile;
   const pathMatches = current != null && normalizePathSlashes(current.path) === normalizePathSlashes(snap.path);
-  const shouldOpenDraft = snap.kind === 'draft' && (!current || isDraftPath(current.path));
+  const shouldOpenDraft = snap.kind === 'draft' && !current;
   if (!pathMatches && !shouldOpenDraft) return;
+  if (current?.isDirty && !pathMatches) return;
   useWorkspaceStore.setState((s) => ({
     workspaces: s.workspaces.map((w) =>
       w.id !== snap.workspaceId
