@@ -39,6 +39,7 @@ export {
   CrmDuplicateError,
   CrmFormsCommandService,
   CrmRevisionConflictError,
+  CrmStageConflictError,
   crmFormsCommands,
   normalizeCompanyDuplicateKey,
   normalizeContactDuplicateKey,

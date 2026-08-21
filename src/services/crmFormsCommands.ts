@@ -56,6 +56,19 @@ export class CompanionOperationMismatchError extends Error {
   }
 }
 
+export class CrmStageConflictError extends Error {
+  readonly dealId: string;
+  readonly fromStage: string;
+  readonly actualStage: string;
+  constructor(dealId: string, fromStage: string, actualStage: string) {
+    super(`Deal ${dealId} is in stage ${actualStage}, not ${fromStage}.`);
+    this.name = 'CrmStageConflictError';
+    this.dealId = dealId;
+    this.fromStage = fromStage;
+    this.actualStage = actualStage;
+  }
+}
+
 export function normalizeContactDuplicateKey(email: string): string {
   const normalized = email.trim().toLowerCase();
   if (!normalized) throw new Error('Contact email is required.');
@@ -248,6 +261,55 @@ export class CrmFormsCommandService {
       return note;
     });
     emitDomainChange({ domain: 'crm', entityType: 'note', entityId: result.id, operation: 'created', revision: result.updatedAt, operationId: operation.operationId });
+    return result;
+  }
+
+  async setDealStage(
+    operation: CompanionOperation,
+    dealId: string,
+    expectedUpdatedAt: string,
+    fromStage: CRMDeal['stage'],
+    toStage: CRMDeal['stage'],
+  ): Promise<CRMDeal> {
+    const prior = await replay<{ entity: CRMDeal }>(this.database, operation);
+    if (prior) return prior.entity;
+    const result = await this.database.transaction('rw', this.database.crmDeals, this.database.crmActivities, this.database.agentOperationReceipts, async () => {
+      const raced = await replay<{ entity: CRMDeal }>(this.database, operation);
+      if (raced) return raced.entity;
+      const existing = await this.database.crmDeals.get(dealId);
+      if (!existing) throw new Error(`deal ${dealId} was not found.`);
+      if (existing.updatedAt !== expectedUpdatedAt) {
+        throw new CrmRevisionConflictError('deal', dealId, expectedUpdatedAt, existing.updatedAt);
+      }
+      if (existing.stage !== fromStage) {
+        throw new CrmStageConflictError(dealId, fromStage, existing.stage);
+      }
+      const updatedAt = nextIso(existing.updatedAt, this.clock);
+      const entity: CRMDeal = { ...existing, stage: toStage, updatedAt };
+      await this.database.crmDeals.put(entity);
+      await this.database.crmActivities.add(activity({
+        type: 'deal_stage_changed',
+        title: `Deal stage ${fromStage} → ${toStage}`,
+        dealId,
+        metadata: { fromStage, toStage },
+      }, updatedAt));
+      await this.database.agentOperationReceipts.add(receipt(
+        operation,
+        'deal stage set',
+        [`crm:deal:${dealId}`],
+        { entity, fromStage, toStage },
+        this.clock,
+      ));
+      return entity;
+    });
+    emitDomainChange({
+      domain: 'crm',
+      entityType: 'deal',
+      entityId: result.id,
+      operation: 'updated',
+      revision: result.updatedAt,
+      operationId: operation.operationId,
+    });
     return result;
   }
 

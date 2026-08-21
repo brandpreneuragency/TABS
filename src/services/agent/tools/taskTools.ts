@@ -1,11 +1,21 @@
 // ---------------------------------------------------------------------------
-// TABS Work-OS Harness — Task and project read tools
-// Mutation handlers land in a later phase. Reads go through TaskService.
+// TABS Work-OS Harness — Task and project tools
+// Reads and mutations go through TaskService. Handlers never write Dexie
+// or Zustand directly.
 // ---------------------------------------------------------------------------
 
 import type { Project, Task, TaskComment, TaskImportance, TaskStatus } from '../../../types';
+import { TASK_TITLE_MAX_LENGTH } from '../../../types';
 import type { AgentToolDefinition, AgentToolResult, ToolExecutionContext } from '../../../types/agent';
-import { taskService } from '../../tasks/taskService';
+import {
+  taskService,
+  type AddTaskCommentInput,
+  type CreateSubtaskInput,
+  type CreateTaskInput,
+  type SoftDeleteTaskInput,
+  type TaskCommandResult,
+  type UpdateTaskInput,
+} from '../../tasks/taskService';
 import {
   asRecord,
   type ArtifactSink,
@@ -22,8 +32,23 @@ import {
   staleIfMismatch,
   TASK_READ_TOOL_NAMES,
 } from './readSupport';
+import {
+  allowlistedUpdateGrant,
+  asNumber,
+  asString,
+  change,
+  defineMutationTool,
+  mapMutationError,
+  mutationOk,
+  type MutationReceiptStore,
+  objectSchema,
+  resolvePriorReceipt,
+  resourceLink,
+  stringList,
+  TASK_MUTATION_TOOL_NAMES,
+} from './mutationSupport';
 
-export { TASK_READ_TOOL_NAMES };
+export { TASK_READ_TOOL_NAMES, TASK_MUTATION_TOOL_NAMES };
 
 export interface TaskListFilters {
   projectId?: string | null;
@@ -241,4 +266,299 @@ export function createTaskReadTools(deps: TaskReadToolDependencies = {}): AgentT
   });
 
   return [taskList, taskGet, projectList];
+}
+
+const TASK_UPDATES_SCHEMA = objectSchema({
+  title: { type: 'string', minLength: 1, maxLength: TASK_TITLE_MAX_LENGTH },
+  content: { type: 'string' },
+  status: { type: 'string', enum: [...TASK_STATUS] },
+  importance: { type: 'string', enum: [...TASK_IMPORTANCE] },
+  date: { type: 'string' },
+  projectId: { type: ['string', 'null'] },
+  assignees: { type: 'array', items: { type: 'string', minLength: 1 } },
+}, [], { minProperties: 1 });
+
+export interface TaskMutationPort {
+  createTask(input: CreateTaskInput): Promise<TaskCommandResult>;
+  createSubtask(input: CreateSubtaskInput): Promise<TaskCommandResult>;
+  updateTask(input: UpdateTaskInput): Promise<TaskCommandResult>;
+  addComment(input: AddTaskCommentInput): Promise<TaskCommandResult>;
+  softDeleteTask(input: SoftDeleteTaskInput): Promise<TaskCommandResult>;
+}
+
+export interface TaskMutationToolDependencies {
+  tasks?: TaskMutationPort;
+  receipts?: MutationReceiptStore;
+}
+
+function defaultTaskMutations(): TaskMutationPort {
+  return {
+    createTask: (input) => taskService.createTask(input),
+    createSubtask: (input) => taskService.createSubtask(input),
+    updateTask: (input) => taskService.updateTask(input),
+    addComment: (input) => taskService.addComment(input),
+    softDeleteTask: (input) => taskService.softDeleteTask(input),
+  };
+}
+
+function taskResourceKey(taskId: string): string {
+  return `task:${taskId}`;
+}
+
+function taskMutationSuccess(
+  summary: string,
+  type: 'created' | 'updated' | 'deleted',
+  result: TaskCommandResult,
+  operationId: string,
+  fingerprint: string,
+  extras: { replayed?: boolean; repeatedEffect?: boolean },
+): AgentToolResult {
+  const key = taskResourceKey(result.task.id);
+  return mutationOk({
+    summary,
+    operationId,
+    effectFingerprint: fingerprint,
+    receipt: result.receipt,
+    resourceLinks: [resourceLink('task', result.task.id, key, result.task.title)],
+    changes: [change(key, type, summary)],
+    entity: result.task,
+    after: result.task,
+    observedRevision: String(result.task.updatedAt),
+    projectionPending: true,
+    replayed: extras.replayed ?? result.replayed,
+    repeatedEffect: extras.repeatedEffect,
+  });
+}
+
+function resultFromReceipt(receipt: TaskCommandResult['receipt']): TaskCommandResult {
+  const data = receipt.resultData as { task?: Task; comment?: TaskComment } | undefined;
+  if (!data?.task) throw new Error(`Receipt ${receipt.operationId} has no task result.`);
+  return { task: data.task, comment: data.comment, receipt, replayed: true };
+}
+
+export function createTaskMutationTools(deps: TaskMutationToolDependencies = {}): AgentToolDefinition[] {
+  const tasks = deps.tasks ?? defaultTaskMutations();
+  const receipts = deps.receipts;
+
+  const taskCreate = defineMutationTool({
+    name: 'task_create',
+    description: 'Create a task or subtask through the task service.',
+    risk: 'local_create',
+    sideEffect: 'reversible',
+    inputSchema: objectSchema({
+      projectId: { type: ['string', 'null'] },
+      parentId: { type: 'string' },
+      title: { type: 'string', minLength: 1, maxLength: TASK_TITLE_MAX_LENGTH },
+      content: { type: 'string' },
+      date: { type: 'string' },
+      importance: { type: 'string', enum: [...TASK_IMPORTANCE] },
+      assignees: { type: 'array', items: { type: 'string', minLength: 1 } },
+    }, ['title']),
+    resolveResourceKeys: (_context, args) => {
+      const record = asRecord(args);
+      if (typeof record.parentId === 'string') return [`task:${record.parentId}`];
+      if (typeof record.projectId === 'string') return [`project:${record.projectId}`];
+      return ['task'];
+    },
+    buildEffectPayload: (args) => {
+      const record = asRecord(args);
+      return {
+        tool: 'task_create',
+        projectId: record.projectId ?? null,
+        parentId: record.parentId ?? null,
+        title: record.title,
+        content: record.content ?? '',
+        date: record.date,
+        importance: record.importance ?? 'medium',
+        assignees: stringList(record.assignees) ?? [],
+      };
+    },
+    async execute(context, args): Promise<AgentToolResult> {
+      const record = asRecord(args);
+      const operationId = context.operationId as string;
+      const fingerprint = context.effectFingerprint as string;
+      const prior = await resolvePriorReceipt(receipts, operationId, fingerprint);
+      if (prior.kind === 'mismatch') return fail('conflict', `Operation ${operationId} was already committed with a different effect.`);
+      if (prior.kind === 'replay' || prior.kind === 'repeat') {
+        return taskMutationSuccess('Created task', 'created', resultFromReceipt(prior.receipt), operationId, fingerprint, {
+          replayed: prior.kind === 'replay',
+          repeatedEffect: prior.kind === 'repeat',
+        });
+      }
+      const base = {
+        operationId,
+        effectFingerprint: fingerprint,
+        title: String(record.title),
+        content: asString(record.content),
+        date: asString(record.date),
+        importance: TASK_IMPORTANCE.includes(record.importance as TaskImportance)
+          ? record.importance as TaskImportance
+          : undefined,
+        assignees: stringList(record.assignees),
+        projectId: record.projectId === null ? null : asString(record.projectId),
+      };
+      try {
+        const result = typeof record.parentId === 'string'
+          ? await tasks.createSubtask({ ...base, parentId: record.parentId })
+          : await tasks.createTask(base);
+        await receipts?.put(result.receipt);
+        return taskMutationSuccess(`Created task ${result.task.title}`, 'created', result, operationId, fingerprint, {});
+      } catch (caught) {
+        return mapMutationError(caught);
+      }
+    },
+  });
+
+  const taskUpdate = defineMutationTool({
+    name: 'task_update',
+    description: 'Update allowed task fields using an expected revision.',
+    risk: 'local_update',
+    sideEffect: 'reversible',
+    inputSchema: objectSchema({
+      taskId: { type: 'string', minLength: 1 },
+      expectedUpdatedAt: { type: 'integer' },
+      updates: TASK_UPDATES_SCHEMA,
+    }, ['taskId', 'expectedUpdatedAt', 'updates']),
+    resolveResourceKeys: (_context, args) => [`task:${asRecord(args).taskId}`],
+    buildEffectPayload: (args) => {
+      const record = asRecord(args);
+      return {
+        tool: 'task_update',
+        taskId: record.taskId,
+        updates: asRecord(record.updates),
+      };
+    },
+    validateGrant: allowlistedUpdateGrant,
+    async execute(context, args): Promise<AgentToolResult> {
+      const record = asRecord(args);
+      const operationId = context.operationId as string;
+      const fingerprint = context.effectFingerprint as string;
+      const prior = await resolvePriorReceipt(receipts, operationId, fingerprint);
+      if (prior.kind === 'mismatch') return fail('conflict', `Operation ${operationId} was already committed with a different effect.`);
+      if (prior.kind === 'replay' || prior.kind === 'repeat') {
+        return taskMutationSuccess('Updated task', 'updated', resultFromReceipt(prior.receipt), operationId, fingerprint, {
+          replayed: prior.kind === 'replay',
+          repeatedEffect: prior.kind === 'repeat',
+        });
+      }
+      try {
+        const result = await tasks.updateTask({
+          operationId,
+          effectFingerprint: fingerprint,
+          taskId: String(record.taskId),
+          expectedUpdatedAt: asNumber(record.expectedUpdatedAt) ?? 0,
+          updates: asRecord(record.updates),
+        });
+        await receipts?.put(result.receipt);
+        return taskMutationSuccess(`Updated task ${result.task.title}`, 'updated', result, operationId, fingerprint, {});
+      } catch (caught) {
+        return mapMutationError(caught);
+      }
+    },
+  });
+
+  const taskCommentAdd = defineMutationTool({
+    name: 'task_comment_add',
+    description: 'Add a task comment using an expected revision.',
+    risk: 'local_create',
+    sideEffect: 'reversible',
+    inputSchema: objectSchema({
+      taskId: { type: 'string', minLength: 1 },
+      expectedUpdatedAt: { type: 'integer' },
+      text: { type: 'string', minLength: 1 },
+    }, ['taskId', 'expectedUpdatedAt', 'text']),
+    resolveResourceKeys: (_context, args) => [`task:${asRecord(args).taskId}`],
+    buildEffectPayload: (args) => {
+      const record = asRecord(args);
+      return { tool: 'task_comment_add', taskId: record.taskId, text: record.text };
+    },
+    async execute(context, args): Promise<AgentToolResult> {
+      const record = asRecord(args);
+      const operationId = context.operationId as string;
+      const fingerprint = context.effectFingerprint as string;
+      const prior = await resolvePriorReceipt(receipts, operationId, fingerprint);
+      if (prior.kind === 'mismatch') return fail('conflict', `Operation ${operationId} was already committed with a different effect.`);
+      if (prior.kind === 'replay' || prior.kind === 'repeat') {
+        return taskMutationSuccess('Added task comment', 'updated', resultFromReceipt(prior.receipt), operationId, fingerprint, {
+          replayed: prior.kind === 'replay',
+          repeatedEffect: prior.kind === 'repeat',
+        });
+      }
+      try {
+        const result = await tasks.addComment({
+          operationId,
+          effectFingerprint: fingerprint,
+          taskId: String(record.taskId),
+          expectedUpdatedAt: asNumber(record.expectedUpdatedAt) ?? 0,
+          text: String(record.text),
+        });
+        await receipts?.put(result.receipt);
+        const commentId = result.comment?.id;
+        const extra = commentId
+          ? [resourceLink('task_comment', commentId, `task:${result.task.id}:comment:${commentId}`, 'comment')]
+          : [];
+        const key = taskResourceKey(result.task.id);
+        return mutationOk({
+          summary: `Added comment on ${result.task.title}`,
+          operationId,
+          effectFingerprint: fingerprint,
+          receipt: result.receipt,
+          resourceLinks: [resourceLink('task', result.task.id, key, result.task.title), ...extra],
+          changes: [change(key, 'updated', 'comment added')],
+          entity: result.comment,
+          after: result.task,
+          observedRevision: String(result.task.updatedAt),
+          projectionPending: true,
+        });
+      } catch (caught) {
+        return mapMutationError(caught);
+      }
+    },
+  });
+
+  const taskSoftDelete = defineMutationTool({
+    name: 'task_soft_delete',
+    description: 'Move a task to trash using an expected revision.',
+    risk: 'local_delete',
+    sideEffect: 'irreversible',
+    supportsRetry: true,
+    inputSchema: objectSchema({
+      taskId: { type: 'string', minLength: 1 },
+      expectedUpdatedAt: { type: 'integer' },
+      reason: { type: 'string', minLength: 1 },
+    }, ['taskId', 'expectedUpdatedAt', 'reason']),
+    resolveResourceKeys: (_context, args) => [`task:${asRecord(args).taskId}`],
+    buildEffectPayload: (args) => {
+      const record = asRecord(args);
+      return { tool: 'task_soft_delete', taskId: record.taskId, reason: record.reason };
+    },
+    async execute(context, args): Promise<AgentToolResult> {
+      const record = asRecord(args);
+      const operationId = context.operationId as string;
+      const fingerprint = context.effectFingerprint as string;
+      const prior = await resolvePriorReceipt(receipts, operationId, fingerprint);
+      if (prior.kind === 'mismatch') return fail('conflict', `Operation ${operationId} was already committed with a different effect.`);
+      if (prior.kind === 'replay' || prior.kind === 'repeat') {
+        return taskMutationSuccess('Soft deleted task', 'deleted', resultFromReceipt(prior.receipt), operationId, fingerprint, {
+          replayed: prior.kind === 'replay',
+          repeatedEffect: prior.kind === 'repeat',
+        });
+      }
+      try {
+        const result = await tasks.softDeleteTask({
+          operationId,
+          effectFingerprint: fingerprint,
+          taskId: String(record.taskId),
+          expectedUpdatedAt: asNumber(record.expectedUpdatedAt) ?? 0,
+          reason: String(record.reason),
+        });
+        await receipts?.put(result.receipt);
+        return taskMutationSuccess(`Moved ${result.task.title} to trash`, 'deleted', result, operationId, fingerprint, {});
+      } catch (caught) {
+        return mapMutationError(caught);
+      }
+    },
+  });
+
+  return [taskCreate, taskUpdate, taskCommentAdd, taskSoftDelete];
 }

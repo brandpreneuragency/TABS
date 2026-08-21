@@ -326,6 +326,10 @@ export interface ToolExecutionContext {
   workspaceScope?: WorkspaceScopeSnapshot;
   contextRefs: AgentContextRef[];
   abortSignal: AbortSignal;
+  /** Runtime-generated after turn persistence. Format: `${runId}:t${turn}:tc${toolIndex}`. */
+  operationId?: string;
+  toolIndex?: number;
+  effectFingerprint?: string;
 }
 
 export interface AgentToolDefinition<TArgs = unknown, TResult = unknown> {

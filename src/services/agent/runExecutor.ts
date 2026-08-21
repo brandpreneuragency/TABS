@@ -81,11 +81,15 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-function effectFingerprint(toolName: string, args: unknown): string {
-  const payload = JSON.stringify({ toolName, args });
+function effectFingerprint(toolVersion: string, resourceKeys: string[], payload: unknown): string {
+  const encoded = JSON.stringify({
+    toolVersion,
+    resourceKeys: [...resourceKeys].sort(),
+    payload,
+  });
   let hash = 5381;
-  for (let index = 0; index < payload.length; index++) {
-    hash = ((hash << 5) + hash + payload.charCodeAt(index)) | 0;
+  for (let index = 0; index < encoded.length; index++) {
+    hash = ((hash << 5) + hash + encoded.charCodeAt(index)) | 0;
   }
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
@@ -486,6 +490,9 @@ export class RunExecutor {
       workspaceScope: run.workspaceScope,
       contextRefs: run.contextRefs,
       abortSignal: controller.signal,
+      operationId: call.operationId,
+      toolIndex: call.toolIndex,
+      effectFingerprint: call.effectFingerprint,
     };
 
     try {
@@ -601,7 +608,11 @@ export class RunExecutor {
         toolIndex,
         providerToolCallId: call.id,
         operationId: buildOperationId(run.id, turn, toolIndex),
-        effectFingerprint: effectFingerprint(call.function.name, tool?.buildEffectPayload(normalizedArgs) ?? normalizedArgs),
+        effectFingerprint: effectFingerprint(
+          tool?.version ?? 'unknown',
+          resourceKeys,
+          tool?.buildEffectPayload(normalizedArgs) ?? normalizedArgs,
+        ),
         toolName: call.function.name,
         toolVersion: tool?.version ?? 'unknown',
         normalizedArgs,

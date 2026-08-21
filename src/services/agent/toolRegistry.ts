@@ -17,11 +17,11 @@ import {
   type PolicyDecision,
   type PolicyRunState,
 } from './policyEngine';
-import { createCrmReadTools, type CRMReadToolDependencies } from './tools/crmTools';
-import { createDocumentReadTools, type DocumentReadToolDependencies } from './tools/documentTools';
+import { createCrmMutationTools, createCrmReadTools, type CRMMutationToolDependencies, type CRMReadToolDependencies } from './tools/crmTools';
+import { createDocumentMutationTools, createDocumentReadTools, type DocumentMutationToolDependencies, type DocumentReadToolDependencies } from './tools/documentTools';
 import { createFormReadTools, type FormReadToolDependencies } from './tools/formTools';
 import { createSystemTools, SYSTEM_TOOL_NAMES, type SystemToolDependencies } from './tools/planTools';
-import { createTaskReadTools, type TaskReadToolDependencies } from './tools/taskTools';
+import { createTaskMutationTools, createTaskReadTools, type TaskMutationToolDependencies, type TaskReadToolDependencies } from './tools/taskTools';
 
 export { SYSTEM_TOOL_NAMES };
 
@@ -30,6 +30,12 @@ export interface ReadToolDependencies {
   tasks?: TaskReadToolDependencies;
   crm?: CRMReadToolDependencies;
   forms?: FormReadToolDependencies;
+}
+
+export interface MutationToolDependencies {
+  documents?: DocumentMutationToolDependencies;
+  tasks?: TaskMutationToolDependencies;
+  crm?: CRMMutationToolDependencies;
 }
 
 const SECRET_NAME_RE = /(secret|credential|api[_-]?key|provider[_-]?value|stored[_-]?key)/i;
@@ -44,6 +50,7 @@ export interface ToolRegistryOptions {
   tools?: AgentToolDefinition[];
   system?: SystemToolDependencies;
   read?: ReadToolDependencies;
+  mutations?: MutationToolDependencies;
 }
 
 function freezeContext(context: ToolExecutionContext): ToolExecutionContext {
@@ -55,6 +62,9 @@ function freezeContext(context: ToolExecutionContext): ToolExecutionContext {
     workspaceScope: context.workspaceScope ? { ...context.workspaceScope } : undefined,
     contextRefs: context.contextRefs.map((ref) => ({ ...ref })),
     abortSignal: context.abortSignal,
+    operationId: context.operationId,
+    toolIndex: context.toolIndex,
+    effectFingerprint: context.effectFingerprint,
   };
   return Object.freeze(frozen);
 }
@@ -147,6 +157,9 @@ export class ToolRegistry {
     for (const tool of createTaskReadTools(options.read?.tasks)) registry.register(tool);
     for (const tool of createCrmReadTools(options.read?.crm)) registry.register(tool);
     for (const tool of createFormReadTools(options.read?.forms)) registry.register(tool);
+    for (const tool of createDocumentMutationTools(options.mutations?.documents)) registry.register(tool);
+    for (const tool of createTaskMutationTools(options.mutations?.tasks)) registry.register(tool);
+    for (const tool of createCrmMutationTools(options.mutations?.crm)) registry.register(tool);
     for (const tool of options.tools ?? []) registry.register(tool);
     return registry;
   }
