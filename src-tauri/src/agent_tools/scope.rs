@@ -78,6 +78,8 @@ impl WorkspaceScopeRegistry {
     }
 
     /// Validate a glob pattern as relative before joining it to a scoped base.
+    /// The canonical base is glob-escaped so workspace characters cannot
+    /// change the match set.
     pub fn scoped_glob_pattern(
         &self,
         scope_id: &str,
@@ -86,10 +88,9 @@ impl WorkspaceScopeRegistry {
     ) -> Result<String, String> {
         let base = self.resolve(scope_id, base_path)?;
         let normalized_pattern = normalize_relative(pattern, false)?;
-        Ok(base
-            .join(normalized_pattern)
-            .to_string_lossy()
-            .replace('\\', "/"))
+        let escaped_base = escape_glob_metacharacters(&base.to_string_lossy().replace('\\', "/"));
+        let pattern_value = normalized_pattern.to_string_lossy().replace('\\', "/");
+        Ok(format!("{escaped_base}/{pattern_value}"))
     }
 
     /// Convert an existing search result to a normalized relative path, after
@@ -157,6 +158,21 @@ fn insert_random_scope(
         }
     }
     Err("WorkspaceScopeIdGenerationFailed".to_string())
+}
+
+fn escape_glob_metacharacters(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '*' | '?' | '[' | ']' | '{' | '}' => {
+                escaped.push('[');
+                escaped.push(ch);
+                escaped.push(']');
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn normalize_relative(value: &str, allow_empty: bool) -> Result<PathBuf, String> {
@@ -334,6 +350,12 @@ mod tests {
             registry.resolve(&scope, "nested/file.txt"),
             Err("WorkspaceScopeUnavailable".to_string())
         );
+    }
+
+    #[test]
+    fn scoped_glob_escapes_metacharacters_in_the_base() {
+        let escaped = escape_glob_metacharacters("/tmp/work[space]");
+        assert_eq!(escaped, "/tmp/work[[]space[]]");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the main TABS window",
+  "description": "Default capabilities for the main TABS window. Custom AI provider URLs require wildcard HTTP access (https://** and http://**) in the first release; the runtime accepts origins only from saved provider snapshots and the model cannot supply request origins. Harness file, search, shell, and Git tools use scoped Rust commands rather than the broad filesystem plugin scope, which remains a documented desktop risk for connected user folders.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -34,19 +34,8 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://api.anthropic.com/*" },
-        { "url": "https://api.openai.com/*" },
-        { "url": "https://generativelanguage.googleapis.com/*" },
-        { "url": "https://openrouter.ai/*" },
-        { "url": "https://integrate.api.nvidia.com/*" },
-        { "url": "https://opencode.ai/*" },
-        { "url": "https://api.tavily.com/*" },
-        { "url": "https://api.firecrawl.dev/*" },
-        { "url": "https://github.com/*" },
-        { "url": "https://objects.githubusercontent.com/*" },
-        { "url": "https://api.exa.ai/*" },
-        { "url": "https://*:*" },
-        { "url": "http://*:*" }
+        { "url": "https://**" },
+        { "url": "http://**" }
       ]
     }
   ]

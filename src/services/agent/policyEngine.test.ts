@@ -22,7 +22,10 @@ import { CRM_MUTATION_TOOL_NAMES, CRM_READ_TOOL_NAMES } from './tools/crmTools';
 import { DOCUMENT_MUTATION_TOOL_NAMES, DOCUMENT_READ_TOOL_NAMES } from './tools/documentTools';
 import { FORM_READ_TOOL_NAMES } from './tools/formTools';
 import { SYSTEM_TOOL_NAMES } from './tools/planTools';
+import { FILE_TOOL_NAMES } from './tools/fileTools';
+import { SHELL_TOOL_NAMES } from './tools/shellTools';
 import { TASK_MUTATION_TOOL_NAMES, TASK_READ_TOOL_NAMES } from './tools/taskTools';
+import { WEB_TOOL_NAMES } from './tools/webTools';
 
 const controller = () => new AbortController();
 
@@ -163,6 +166,9 @@ describe('tool registry', () => {
       ...DOCUMENT_MUTATION_TOOL_NAMES,
       ...TASK_MUTATION_TOOL_NAMES,
       ...CRM_MUTATION_TOOL_NAMES,
+      ...FILE_TOOL_NAMES,
+      ...SHELL_TOOL_NAMES,
+      ...WEB_TOOL_NAMES,
     ]);
     expect(registry.versionString()).toContain('run_plan_set@1.0.0');
     expect(() => registry.register(makeTool({ name: 'run_plan_set', risk: 'local_read' }))).toThrow(

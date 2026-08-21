@@ -105,6 +105,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(terminal::TerminalRegistry::new())
         .manage(agent_tools::scope::WorkspaceScopeRegistry::new())
+        .manage(ai_tools::cancel::ToolCancelRegistry::new())
         .manage(commands::lifecycle::LifecycleGate::new())
         .manage(PendingOpenFile(Mutex::new(None)))
         .plugin(
@@ -144,10 +145,14 @@ pub fn run() {
             commands::terminal::home_dir,
             commands::ai_tools::shell::ai_shell_exec,
             commands::ai_tools::fs_ops::ai_file_read,
+            commands::ai_tools::fs_ops::ai_file_text,
             commands::ai_tools::fs_ops::ai_file_write,
             commands::ai_tools::fs_ops::ai_file_edit,
             commands::ai_tools::search::ai_glob,
-            commands::ai_tools::search::ai_grep
+            commands::ai_tools::search::ai_grep,
+            commands::ai_tools::git::ai_git_status,
+            commands::ai_tools::git::ai_git_diff,
+            commands::ai_tools::cancel::ai_tool_cancel
         ])
         .setup(|app| {
             // Intercept the main window's close button: instead of quitting

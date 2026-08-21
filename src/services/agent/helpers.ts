@@ -65,6 +65,27 @@ export const MAX_TOOL_RESULT_BYTES = 65_536;
 /** Maximum bytes of shell output kept in a tool result record. */
 export const MAX_SHELL_RESULT_BYTES = 131_072;
 
+/** Default duration for filesystem read, glob, and grep tools. */
+export const READ_TOOL_TIMEOUT_MS = 30_000;
+
+/** Default duration for web search. */
+export const WEB_SEARCH_TIMEOUT_MS = 30_000;
+
+/** Default shell duration. */
+export const SHELL_DEFAULT_TIMEOUT_MS = 60_000;
+
+/** Hard maximum shell duration. */
+export const SHELL_MAX_TIMEOUT_MS = 10 * 60 * 1_000;
+
+/** Maximum glob/grep matches returned to the model. */
+export const SEARCH_MATCH_LIMIT = 200;
+
+/** Default file_read line limit when the model omits `limit`. */
+export const FILE_READ_DEFAULT_LIMIT = 200;
+
+/** Hard maximum file_read line limit. */
+export const FILE_READ_MAX_LIMIT = 2_000;
+
 /** Warning threshold for artifact record size. */
 export const ARTIFACT_SIZE_WARNING_BYTES = 1_048_576;
 

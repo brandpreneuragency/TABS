@@ -19,9 +19,12 @@ import {
 } from './policyEngine';
 import { createCrmMutationTools, createCrmReadTools, type CRMMutationToolDependencies, type CRMReadToolDependencies } from './tools/crmTools';
 import { createDocumentMutationTools, createDocumentReadTools, type DocumentMutationToolDependencies, type DocumentReadToolDependencies } from './tools/documentTools';
+import { createFileTools, type FileToolDependencies } from './tools/fileTools';
 import { createFormReadTools, type FormReadToolDependencies } from './tools/formTools';
 import { createSystemTools, SYSTEM_TOOL_NAMES, type SystemToolDependencies } from './tools/planTools';
+import { createShellTools, type ShellToolDependencies } from './tools/shellTools';
 import { createTaskMutationTools, createTaskReadTools, type TaskMutationToolDependencies, type TaskReadToolDependencies } from './tools/taskTools';
+import { createWebTools, type WebToolDependencies } from './tools/webTools';
 
 export { SYSTEM_TOOL_NAMES };
 
@@ -38,6 +41,12 @@ export interface MutationToolDependencies {
   crm?: CRMMutationToolDependencies;
 }
 
+export interface CodingToolDependencies {
+  files?: FileToolDependencies;
+  shell?: ShellToolDependencies;
+  web?: WebToolDependencies;
+}
+
 const SECRET_NAME_RE = /(secret|credential|api[_-]?key|provider[_-]?value|stored[_-]?key)/i;
 const STORED_PROVIDER_RE = /stored (provider|credential|api key)/i;
 
@@ -51,6 +60,7 @@ export interface ToolRegistryOptions {
   system?: SystemToolDependencies;
   read?: ReadToolDependencies;
   mutations?: MutationToolDependencies;
+  coding?: CodingToolDependencies;
 }
 
 function freezeContext(context: ToolExecutionContext): ToolExecutionContext {
@@ -160,6 +170,9 @@ export class ToolRegistry {
     for (const tool of createDocumentMutationTools(options.mutations?.documents)) registry.register(tool);
     for (const tool of createTaskMutationTools(options.mutations?.tasks)) registry.register(tool);
     for (const tool of createCrmMutationTools(options.mutations?.crm)) registry.register(tool);
+    for (const tool of createFileTools(options.coding?.files)) registry.register(tool);
+    for (const tool of createShellTools(options.coding?.shell)) registry.register(tool);
+    for (const tool of createWebTools(options.coding?.web)) registry.register(tool);
     for (const tool of options.tools ?? []) registry.register(tool);
     return registry;
   }
