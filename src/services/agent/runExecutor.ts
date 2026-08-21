@@ -512,6 +512,7 @@ export class RunExecutor {
       const result = await Promise.resolve(tool.execute(context, args)) as AgentToolResult;
       await this.completeTool(run.id, call, attempt.id, result, 'succeeded');
     } catch (caught) {
+      if (caught instanceof Error && caught.name === 'RestartSignal') throw caught;
       const cancelled = controller.signal.aborted
         || (caught instanceof ProviderError && caught.kind === 'cancelled');
       const message = caught instanceof Error ? caught.message : 'Tool execution failed.';
