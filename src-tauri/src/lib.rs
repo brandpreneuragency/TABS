@@ -105,6 +105,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(terminal::TerminalRegistry::new())
         .manage(agent_tools::scope::WorkspaceScopeRegistry::new())
+        .manage(commands::lifecycle::LifecycleGate::new())
         .manage(PendingOpenFile(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -120,6 +121,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             test_notification,
             take_pending_open_file,
+            commands::lifecycle::request_restart,
+            commands::lifecycle::prepare_shutdown,
+            commands::lifecycle::prepare_for_restart,
+            commands::lifecycle::complete_shutdown,
+            commands::lifecycle::install_update,
+            commands::lifecycle::cancel_update,
+            commands::lifecycle::notify_run_event,
             agent_tools::scope::agent_scope_register,
             agent_tools::scope::agent_scope_reregister,
             agent_tools::scope::agent_scope_revoke,
