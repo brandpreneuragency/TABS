@@ -19,7 +19,9 @@ import {
   type ProviderRetryHooks,
 } from './providerAdapter';
 
-export type FakeProviderScript =
+type FakeProviderDelay = { delayMs?: number };
+
+export type FakeProviderScript = (
   | {
       type: 'text';
       content: string;
@@ -45,10 +47,30 @@ export type FakeProviderScript =
   | {
       type: 'malformed';
       chunk?: string;
-    };
+    }
+) & FakeProviderDelay;
 
 export interface FakeProviderOptions extends ProviderRetryHooks {
   scripts: FakeProviderScript[];
+}
+
+async function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return;
+  if (signal?.aborted) {
+    throw new ProviderError('cancelled', 'Provider request was cancelled.', { retryable: false });
+  }
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(new ProviderError('cancelled', 'Provider request was cancelled.', { retryable: false }));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort);
+  });
 }
 
 export class FakeProvider implements ProviderAdapter {
@@ -77,6 +99,12 @@ export class FakeProvider implements ProviderAdapter {
       throw new ProviderError('invalid_request', 'Fake provider has no script.', { retryable: false });
     }
     await this.hooks.attemptStore.updateProviderAttempt(attempt.id, { status: 'streaming' });
+    if (script.delayMs && script.delayMs > 0) {
+      await abortableDelay(script.delayMs, request.abortSignal);
+    }
+    if (request.abortSignal?.aborted) {
+      throw new ProviderError('cancelled', 'Provider request was cancelled.', { retryable: false });
+    }
     return this.play(script, request, attempt);
   };
 

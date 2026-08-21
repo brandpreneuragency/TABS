@@ -449,6 +449,42 @@ export class RunRepository {
     return this.database.agentOperationReceipts.where('operationId').equals(operationId).first();
   }
 
+  getToolCalls(runId: string): Promise<AgentToolCall[]> {
+    return this.database.agentToolCalls.where('runId').equals(runId).sortBy('createdAt');
+  }
+
+  async consumePendingInput(runId: string, turn: number): Promise<AgentMessage[]> {
+    return this.database.transaction(
+      'rw',
+      this.database.agentRuns,
+      this.database.agentMessages,
+      async () => {
+        const run = await this.requireRun(runId);
+        const messages = await this.database.agentMessages
+          .where('runId')
+          .equals(runId)
+          .sortBy('messageIndex');
+        const pending = messages.filter(
+          (message) => message.role === 'user' && message.consumedAtTurn === undefined,
+        );
+        const consumed: AgentMessage[] = [];
+        for (const message of pending) {
+          const updated = { ...message, consumedAtTurn: turn };
+          await this.database.agentMessages.put(updated);
+          consumed.push(updated);
+        }
+        if (run.pendingInputCount !== 0) {
+          await this.database.agentRuns.put({
+            ...run,
+            pendingInputCount: 0,
+            updatedAt: now(),
+          });
+        }
+        return consumed;
+      },
+    );
+  }
+
   async claimRun(
     runId: string,
     ownerId: string,
