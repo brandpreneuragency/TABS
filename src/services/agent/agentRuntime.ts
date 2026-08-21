@@ -17,7 +17,8 @@ import type {
   WorkspaceScopeSnapshot,
 } from '../../types/agent';
 import {
-  contextRefForModel,
+  captureContextRefs,
+  captureRunContext,
   nextMessageIndex,
   workspaceScopeForModel,
 } from './contextManager';
@@ -179,16 +180,20 @@ export class AgentRuntime {
       input.maxTurns ?? RUNTIME_HARD_MAX_TURNS,
       input.maxDurationMs ?? RUNTIME_HARD_MAX_DURATION_MS,
     );
-    const workspaceScope = input.workspaceScope
-      ? captureWorkspaceScopeSnapshot(input.workspaceScope)
-      : undefined;
+    const captured = captureRunContext({
+      contextRefs: input.contextRefs,
+      workspaceScope: input.workspaceScope
+        ? captureWorkspaceScopeSnapshot(input.workspaceScope)
+        : undefined,
+    });
+    const workspaceScope = captured.workspaceScope;
     const run: AgentRun = {
       id: this.createId(),
       title: input.title ?? input.goal.slice(0, 80),
       goal: input.goal,
       status: 'queued',
       mode: input.mode ?? 'read_only',
-      contextRefs: (input.contextRefs ?? []).map(contextRefForModel),
+      contextRefs: captured.contextRefs,
       providerSnapshot: input.providerSnapshot,
       profileSnapshot: input.profileSnapshot,
       instructionSnapshot: input.instructionSnapshot,
@@ -343,7 +348,7 @@ export class AgentRuntime {
       id: this.createId(),
       parentRunId: parent.id,
       status: 'queued',
-      contextRefs: selectedContextRefs ?? parent.contextRefs,
+      contextRefs: captureContextRefs(selectedContextRefs ?? parent.contextRefs),
       nextSequence: 0,
       activeTurn: 0,
       executionEpoch: parent.executionEpoch + 1,

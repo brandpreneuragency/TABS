@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import type {
+  AgentContextKind,
   AgentContextRef,
   AgentMessage,
   AgentRun,
@@ -16,6 +17,16 @@ import type { OpenAIProtocolToolCall, ProviderProtocolMessage } from './provider
 import { redactSecrets } from './redaction';
 
 export const CONTEXT_USAGE_LIMIT = 0.8;
+
+export const CONTEXT_KINDS: AgentContextKind[] = [
+  'workspace',
+  'document',
+  'task',
+  'crm',
+  'form',
+  'submission',
+  'file',
+];
 
 export const CONTEXT_BUDGET_SHARES = {
   system: 0.15,
@@ -50,6 +61,40 @@ export function contextRefForModel(ref: AgentContextRef): AgentContextRef {
     revision: ref.revision,
     scope: ref.scope,
   };
+}
+
+/**
+ * Freeze context identifiers when a run starts. Later UI selection changes
+ * must not rewrite these references.
+ */
+export function captureContextRefs(refs: AgentContextRef[]): AgentContextRef[] {
+  return Object.freeze(refs.map((ref) => Object.freeze(contextRefForModel(ref)))) as AgentContextRef[];
+}
+
+export function captureRunContext(input: {
+  contextRefs?: AgentContextRef[];
+  workspaceScope?: WorkspaceScopeSnapshot;
+}): { contextRefs: AgentContextRef[]; workspaceScope?: WorkspaceScopeSnapshot } {
+  return {
+    contextRefs: captureContextRefs(input.contextRefs ?? []),
+    workspaceScope: input.workspaceScope
+      ? Object.freeze({
+          workspaceId: input.workspaceScope.workspaceId,
+          rootPath: input.workspaceScope.rootPath,
+          rootRevision: input.workspaceScope.rootRevision,
+          nativeScopeId: input.workspaceScope.nativeScopeId,
+        }) as WorkspaceScopeSnapshot
+      : undefined,
+  };
+}
+
+export function frozenContextRef(
+  refs: AgentContextRef[],
+  kind: AgentContextKind,
+  id?: string,
+): AgentContextRef | undefined {
+  if (id) return refs.find((ref) => ref.kind === kind && ref.id === id);
+  return refs.find((ref) => ref.kind === kind);
 }
 
 export interface CompileContextInput {

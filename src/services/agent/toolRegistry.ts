@@ -17,9 +17,20 @@ import {
   type PolicyDecision,
   type PolicyRunState,
 } from './policyEngine';
+import { createCrmReadTools, type CRMReadToolDependencies } from './tools/crmTools';
+import { createDocumentReadTools, type DocumentReadToolDependencies } from './tools/documentTools';
+import { createFormReadTools, type FormReadToolDependencies } from './tools/formTools';
 import { createSystemTools, SYSTEM_TOOL_NAMES, type SystemToolDependencies } from './tools/planTools';
+import { createTaskReadTools, type TaskReadToolDependencies } from './tools/taskTools';
 
 export { SYSTEM_TOOL_NAMES };
+
+export interface ReadToolDependencies {
+  documents?: DocumentReadToolDependencies;
+  tasks?: TaskReadToolDependencies;
+  crm?: CRMReadToolDependencies;
+  forms?: FormReadToolDependencies;
+}
 
 const SECRET_NAME_RE = /(secret|credential|api[_-]?key|provider[_-]?value|stored[_-]?key)/i;
 const STORED_PROVIDER_RE = /stored (provider|credential|api key)/i;
@@ -32,6 +43,7 @@ export interface ToolRegistryOptions {
   policy?: PolicyEngine;
   tools?: AgentToolDefinition[];
   system?: SystemToolDependencies;
+  read?: ReadToolDependencies;
 }
 
 function freezeContext(context: ToolExecutionContext): ToolExecutionContext {
@@ -131,6 +143,10 @@ export class ToolRegistry {
       system: options.system,
     });
     for (const tool of createSystemTools(options.system)) registry.register(tool);
+    for (const tool of createDocumentReadTools(options.read?.documents)) registry.register(tool);
+    for (const tool of createTaskReadTools(options.read?.tasks)) registry.register(tool);
+    for (const tool of createCrmReadTools(options.read?.crm)) registry.register(tool);
+    for (const tool of createFormReadTools(options.read?.forms)) registry.register(tool);
     for (const tool of options.tools ?? []) registry.register(tool);
     return registry;
   }

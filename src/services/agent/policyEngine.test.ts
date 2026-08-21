@@ -18,7 +18,11 @@ import {
   type PolicyRunState,
 } from './policyEngine';
 import { ToolRegistrationError, ToolRegistry, createDefaultToolRegistry } from './toolRegistry';
+import { CRM_READ_TOOL_NAMES } from './tools/crmTools';
+import { DOCUMENT_READ_TOOL_NAMES } from './tools/documentTools';
+import { FORM_READ_TOOL_NAMES } from './tools/formTools';
 import { SYSTEM_TOOL_NAMES } from './tools/planTools';
+import { TASK_READ_TOOL_NAMES } from './tools/taskTools';
 
 const controller = () => new AbortController();
 
@@ -150,7 +154,13 @@ describe('policy order and grant constraints', () => {
 describe('tool registry', () => {
   it('registers versioned system tools and rejects conflicts', () => {
     const registry = createDefaultToolRegistry();
-    expect(registry.names()).toEqual([...SYSTEM_TOOL_NAMES]);
+    expect(registry.names()).toEqual([
+      ...SYSTEM_TOOL_NAMES,
+      ...DOCUMENT_READ_TOOL_NAMES,
+      ...TASK_READ_TOOL_NAMES,
+      ...CRM_READ_TOOL_NAMES,
+      ...FORM_READ_TOOL_NAMES,
+    ]);
     expect(registry.versionString()).toContain('run_plan_set@1.0.0');
     expect(() => registry.register(makeTool({ name: 'run_plan_set', risk: 'local_read' }))).toThrow(
       ToolRegistrationError,

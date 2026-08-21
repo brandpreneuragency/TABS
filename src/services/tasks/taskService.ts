@@ -492,6 +492,56 @@ export class TaskService {
     });
   }
 
+  async getTask(taskId: string): Promise<Task | undefined> {
+    return this.database.tasks.get(taskId);
+  }
+
+  async listTasks(filters: {
+    projectId?: string | null;
+    status?: TaskStatus;
+    parentId?: string;
+    query?: string;
+    includeDeleted?: boolean;
+  } = {}): Promise<Task[]> {
+    let tasks = await this.database.tasks.toArray();
+    if (!filters.includeDeleted) tasks = tasks.filter((task) => !task.deletedAt);
+    if (filters.projectId !== undefined) {
+      tasks = tasks.filter((task) => task.projectId === filters.projectId);
+    }
+    if (filters.status) tasks = tasks.filter((task) => task.status === filters.status);
+    if (filters.parentId !== undefined) {
+      tasks = filters.parentId
+        ? tasks.filter((task) => task.parentId === filters.parentId)
+        : tasks.filter((task) => !task.parentId);
+    }
+    const query = filters.query?.trim().toLowerCase();
+    if (query) {
+      tasks = tasks.filter((task) => (
+        task.title.toLowerCase().includes(query)
+        || task.content.toLowerCase().includes(query)
+      ));
+    }
+    return tasks.sort((left, right) => left.order - right.order || left.createdAt - right.createdAt);
+  }
+
+  async listSubtasks(parentId: string): Promise<Task[]> {
+    return this.listTasks({ parentId });
+  }
+
+  async listTaskComments(taskId: string): Promise<TaskComment[]> {
+    const comments = await this.database.taskComments.where('taskId').equals(taskId).toArray();
+    return comments.sort((left, right) => left.createdAt - right.createdAt);
+  }
+
+  async listProjects(): Promise<Project[]> {
+    const projects = await this.database.projects.toArray();
+    return projects.sort((left, right) => left.createdAt - right.createdAt);
+  }
+
+  async getProject(projectId: string): Promise<Project | undefined> {
+    return this.database.projects.get(projectId);
+  }
+
   async restoreTask(taskId: string): Promise<Task | undefined> {
     const operation = localTaskOperation('restore');
     return this.database.transaction('rw', ...this.taskTransactionTables(), async () => {
