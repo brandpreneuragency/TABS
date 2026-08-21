@@ -13,6 +13,12 @@ const CONFIG_DIR = '.tabs';
 const WRITER_INSTRUCTIONS_FILE = 'writerinstructions.md';
 const TASK_INSTRUCTIONS_FILE = 'taskinstructions.md';
 
+/** Kept on disk for the user. New harness runs must not load these files. */
+export const LEGACY_INSTRUCTION_FILES = [
+  WRITER_INSTRUCTIONS_FILE,
+  TASK_INSTRUCTIONS_FILE,
+] as const;
+
 const DEFAULT_WRITER_INSTRUCTIONS = `# Writer Agent Instructions
 
 ## Core Behavior

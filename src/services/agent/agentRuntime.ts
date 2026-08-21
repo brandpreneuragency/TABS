@@ -23,6 +23,7 @@ import {
   workspaceScopeForModel,
 } from './contextManager';
 import { generateId } from './helpers';
+import { compileInstructions } from './promptCompiler';
 import type { ProviderAdapter } from './providers/providerAdapter';
 import {
   RunExecutor,
@@ -187,6 +188,18 @@ export class AgentRuntime {
         : undefined,
     });
     const workspaceScope = captured.workspaceScope;
+    const instructionSnapshot = input.instructionSnapshot.compiledContent
+      ? input.instructionSnapshot
+      : compileInstructions({
+          goal: input.goal,
+          mode: input.mode ?? 'read_only',
+          policy: input.policySnapshot,
+          profile: input.profileSnapshot,
+          contextRefs: captured.contextRefs,
+          workspaceScope,
+          remainingTurns: limits.maxTurns,
+          remainingDurationMs: limits.maxDurationMs,
+        }).snapshot;
     const run: AgentRun = {
       id: this.createId(),
       title: input.title ?? input.goal.slice(0, 80),
@@ -196,7 +209,7 @@ export class AgentRuntime {
       contextRefs: captured.contextRefs,
       providerSnapshot: input.providerSnapshot,
       profileSnapshot: input.profileSnapshot,
-      instructionSnapshot: input.instructionSnapshot,
+      instructionSnapshot,
       policySnapshot: input.policySnapshot,
       policyRevision: input.policySnapshot.revision,
       toolRegistryVersion: input.toolRegistryVersion,

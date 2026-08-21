@@ -154,7 +154,7 @@ function systemPrompt(run: AgentRun): string {
 }
 
 function toProtocolMessage(message: AgentMessage): ProviderProtocolMessage | undefined {
-  if (message.state === 'pending') return undefined;
+  if (message.state === 'pending' || message.state === 'compacted') return undefined;
   const content = redactSecrets(asText(message.content));
   if (message.role === 'system') {
     return { role: 'system', content };

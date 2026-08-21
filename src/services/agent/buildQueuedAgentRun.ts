@@ -5,8 +5,9 @@ import type {
   InstructionSnapshot,
   ProviderSnapshot,
 } from '../../types/agent';
-import { generateId } from './helpers';
 import { captureContextRefs } from './contextManager';
+import { generateId } from './helpers';
+import { compileInstructions, snapshotAgentProfile } from './promptCompiler';
 
 export interface AgentUiCreateInput {
   goal: string;
@@ -49,24 +50,23 @@ export function buildQueuedAgentRun(
     maxOutputTokens: 8192,
   };
 
-  const profileSnapshot: AgentProfileSnapshot = {
-    name: input.profileName,
-    description: input.profileName,
-    systemInstructions: '',
+  const profileSnapshot: AgentProfileSnapshot = snapshotAgentProfile(input.profileName, {
     preferredProviderId: providerSnapshot.providerId,
     preferredModelId: providerSnapshot.modelId,
     defaultMode: input.mode,
-    allowedToolGroups: ['documents', 'tasks', 'crm', 'forms'],
-    defaultSkills: [],
-  };
+  });
 
-  const instructionSnapshot: InstructionSnapshot = {
-    safetyInstructionsHash: 'pending',
-    policyHash: 'pending',
-    skillHashes: [],
-    compiledContent: '',
-    compiledContentHash: 'pending',
-  };
+  const policySnapshot = { revision: 1, mode: input.mode, rulesHash: 'pending' };
+  const contextRefs = captureContextRefs(input.contextRefs);
+  const instructionSnapshot: InstructionSnapshot = compileInstructions({
+    goal: input.goal,
+    mode: input.mode,
+    policy: policySnapshot,
+    profile: profileSnapshot,
+    contextRefs,
+    remainingTurns: 25,
+    remainingDurationMs: 30 * 60 * 1000,
+  }).snapshot;
 
   return {
     id: generateId(),
@@ -74,11 +74,11 @@ export function buildQueuedAgentRun(
     goal: input.goal,
     status: 'queued',
     mode: input.mode,
-    contextRefs: captureContextRefs(input.contextRefs),
+    contextRefs,
     providerSnapshot,
     profileSnapshot,
     instructionSnapshot,
-    policySnapshot: { revision: 1, mode: input.mode, rulesHash: 'pending' },
+    policySnapshot,
     policyRevision: 1,
     toolRegistryVersion: '1.0.0',
     toolRegistryHash: 'pending',
