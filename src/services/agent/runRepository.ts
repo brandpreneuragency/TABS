@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 import type {
   AgentApproval,
+  AgentArtifact,
   AgentEvent,
   AgentEventType,
   AgentMessage,
@@ -451,6 +452,14 @@ export class RunRepository {
 
   getToolCalls(runId: string): Promise<AgentToolCall[]> {
     return this.database.agentToolCalls.where('runId').equals(runId).sortBy('createdAt');
+  }
+
+  getApprovals(runId: string): Promise<AgentApproval[]> {
+    return this.database.agentApprovals.where('runId').equals(runId).sortBy('createdAt');
+  }
+
+  getArtifacts(runId: string): Promise<AgentArtifact[]> {
+    return this.database.agentArtifacts.where('runId').equals(runId).sortBy('createdAt');
   }
 
   async consumePendingInput(runId: string, turn: number): Promise<AgentMessage[]> {

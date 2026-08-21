@@ -8,6 +8,7 @@ import { FormsNavList } from './lists/FormsNavList';
 import { FormList } from './lists/FormList';
 import { SubmissionList } from './lists/SubmissionList';
 import { SettingsNav } from './lists/SettingsNav';
+import { AgentLaunchButton } from '../agent/AgentLaunchButton';
 
 const FORMS_LIST_TITLE: Record<Exclude<FormsPage, 'templates'>, string> = {
   dashboard: 'Recent Forms',
@@ -79,6 +80,7 @@ export function FormsListPanel() {
         ) : (
           <span className="forms-list-footer-hint subtle">{footerTitle}</span>
         )}
+        <AgentLaunchButton source="forms" />
       </div>
     </div>
   );

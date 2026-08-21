@@ -1,4 +1,13 @@
-import type { AgentApproval, AgentClientCommand, AgentMessage, AgentRun, AgentRunStatus } from '../../types/agent';
+import type {
+  AgentApproval,
+  AgentArtifact,
+  AgentClientCommand,
+  AgentEvent,
+  AgentMessage,
+  AgentRun,
+  AgentRunStatus,
+  AgentToolCall,
+} from '../../types/agent';
 import { generateId } from './helpers';
 import { RunRepository } from './runRepository';
 import {
@@ -34,6 +43,16 @@ const COMMAND_FOR_EVENT: Partial<Record<RunTransitionEvent, AgentClientCommand>>
   review_resolved_cancel: 'review.resolve',
 };
 
+let defaultClient: AgentClient | undefined;
+
+/** Shared command/query client for the harness UI. Does not execute models. */
+export function getDefaultAgentClient(): AgentClient {
+  if (!defaultClient) {
+    defaultClient = new AgentClient({ repository: new RunRepository() });
+  }
+  return defaultClient;
+}
+
 /**
  * Narrow command boundary for the run center and future runtime adapter.
  * React dispatches these commands; it never calculates lifecycle transitions.
@@ -58,6 +77,34 @@ export class AgentClient {
       throw new Error('New runs must be created in queued state.');
     }
     return this.repository.createRun(run, { command: 'run.create' });
+  }
+
+  listRuns(): Promise<AgentRun[]> {
+    return this.repository.listRuns();
+  }
+
+  getRun(runId: string): Promise<AgentRun | undefined> {
+    return this.repository.getRun(runId);
+  }
+
+  getEvents(runId: string): Promise<AgentEvent[]> {
+    return this.repository.getEvents(runId);
+  }
+
+  getMessages(runId: string): Promise<AgentMessage[]> {
+    return this.repository.getMessages(runId);
+  }
+
+  getApprovals(runId: string): Promise<AgentApproval[]> {
+    return this.repository.getApprovals(runId);
+  }
+
+  getArtifacts(runId: string): Promise<AgentArtifact[]> {
+    return this.repository.getArtifacts(runId);
+  }
+
+  getToolCalls(runId: string): Promise<AgentToolCall[]> {
+    return this.repository.getToolCalls(runId);
   }
 
   /**

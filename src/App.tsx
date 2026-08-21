@@ -8,6 +8,8 @@ import { EditorWorkspace } from './components/editor/EditorWorkspace';
 import { TaskDetailPanel } from './components/taskManager/TaskDetailPanel';
 import { TaskProjectsKanban } from './components/taskManager/TaskProjectsKanban';
 import { AISidebar } from './components/sidebar/AISidebar';
+import { AgentSidebarHost } from './components/agent/AgentSidebarHost';
+import { useHarnessEnabled } from './components/agent/useHarnessEnabled';
 import { FileExplorerPanel } from './components/fileExplorer/FileExplorerPanel';
 import { TaskListPanel } from './components/taskManager/TaskListPanel';
 import { AgentEditor } from './components/modals/AgentEditor';
@@ -59,6 +61,7 @@ export default function App() {
   const activeFormId = useFormsStore((s) => s.activeFormId);
   const activeSubmissionId = useFormsStore((s) => s.activeSubmissionId);
   const activeFormStatus = useFormsStore((s) => s.forms.find((f) => f.id === s.activeFormId)?.status ?? null);
+  const harnessEnabled = useHarnessEnabled();
 
   const isLoaded = docsLoaded && tasksLoaded && projectsLoaded;
 
@@ -237,7 +240,9 @@ export default function App() {
     embedState: formsPageActive && (activeFormsPage === 'builder' || activeFormsPage === 'list') ? activeFormStatus : null,
   };
 
-  const sidebar = crmMode
+  const sidebar = harnessEnabled
+    ? <AgentSidebarHost />
+    : crmMode
     ? <CRMAISidebar crmContext={crmContext} />
     : settingsActive
     ? (
