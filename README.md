@@ -12,8 +12,8 @@ Vite/browser mode is a **development preview only** — not a supported producti
 - **Rich text editor** — Full formatting toolbar (bold, italic, headings, alignment, lists, links, images, color)
 - **Local folders** — Open folders and files via Tauri filesystem commands
 - **Auto-save** — Debounced saves to IndexedDB; sessions restore as left
-- **AI Assistant sidebar** — Resizable panel with streaming chat (OpenAI, Gemini, OpenRouter, Anthropic)
-- **Custom agents & quick prompts** — Local agents with system prompts; reusable prompts
+- **Work-OS harness** — Durable local agent runs across Documents, Tasks, CRM, Forms, files, and bounded shell commands
+- **Run Center** — Inspect plans, approvals, tool events, recovery, and results without a chat-first loop
 - **Tasks & CRM** — Task manager, projects, CRM, and forms alongside documents
 - **Local terminal** — Embedded terminal panel in the desktop shell
 - **Export** — DOCX, PDF, and TXT via the hamburger menu
@@ -53,7 +53,9 @@ npm run tauri:build
 
 1. Open **Settings** → **Tools**
 2. Select a provider, paste your API key, choose a model, and save
-3. The provider is ready to use in the AI sidebar
+3. The provider is ready to use in the Work-OS assistant sidebar
+
+The assistant is a local Work-OS harness. It starts, queues, and recovers runs. Old chat threads, personas, and task AI batches are not migrated.
 
 ### Provider Notes
 

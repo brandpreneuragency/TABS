@@ -111,6 +111,18 @@ export function AgentSidebar({
   }, [providers, providerId, setProviderId, setModelId]);
 
   useEffect(() => {
+    const handler = (event: Event) => {
+      const prompt = (event as CustomEvent<string>).detail;
+      if (typeof prompt === 'string' && prompt.trim()) {
+        setComposerGoal(prompt);
+        setViewMode('run');
+      }
+    };
+    window.addEventListener('quickPromptSelected', handler);
+    return () => window.removeEventListener('quickPromptSelected', handler);
+  }, [setComposerGoal, setViewMode]);
+
+  useEffect(() => {
     if (!selectedRunId) return;
     if (lastFocusedRunId === selectedRunId) {
       panelRef.current?.focus();

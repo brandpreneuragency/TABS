@@ -50,9 +50,9 @@ export type FormsPage = 'dashboard' | 'list' | 'builder' | 'submissions' | 'temp
 export type TaskPage = 'list' | 'calendar' | 'projects';
 
 /** Sub-tabs rendered inside the Settings document. Fixed and non-closable. */
-export type SettingsSubTab = 'tools' | 'actions' | 'appearance' | 'agents';
+export type SettingsSubTab = 'tools' | 'actions' | 'appearance';
 /** Legacy Settings sub-tab id kept for deep-link compatibility (maps to `tools`). */
-export type LegacySettingsSubTab = SettingsSubTab | 'models';
+export type LegacySettingsSubTab = SettingsSubTab | 'models' | 'agents';
 /** Which doc-mode tab is active: a normal document or the special Settings doc. */
 export type DocActiveView = 'document' | 'settings';
 
@@ -83,7 +83,7 @@ interface UIStore {
     | 'actionsManagerModal'
     | 'appearanceSettings'
     | null;
-  actionsManagerScope: 'writer' | 'task' | 'crm';
+  actionsManagerScope: 'general';
   editingAgentId: string | null;
   findReplaceOpen: boolean;
   htmlViewOpen: boolean;
@@ -150,7 +150,7 @@ interface UIStore {
   setSidebarTab: (tab: SidebarTab) => void;
   setSelectedText: (sel: SelectionState | null) => void;
   setActiveModal: (m: UIStore['activeModal']) => void;
-  setActionsManagerScope: (scope: 'writer' | 'task' | 'crm') => void;
+  setActionsManagerScope: (scope: 'general') => void;
   setEditingAgentId: (id: string | null) => void;
   setFindReplaceOpen: (v: boolean) => void;
   setHtmlViewOpen: (v: boolean) => void;
@@ -290,7 +290,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
   sidebarTab: 'chat',
   selectedText: null,
   activeModal: null,
-  actionsManagerScope: 'writer',
+  actionsManagerScope: 'general',
   editingAgentId: null,
   findReplaceOpen: false,
   htmlViewOpen: false,
@@ -501,14 +501,14 @@ export const useUIStore = create<UIStore>((set, get) => ({
   },
 
   setActiveSettingsSubTab: (tab) =>
-    set({ activeSettingsSubTab: tab === 'models' ? 'tools' : tab }),
+    set({ activeSettingsSubTab: tab === 'models' || tab === 'agents' ? 'tools' : tab }),
 
   openSettings: (subTab) => {
     // Settings is a first-class shell mode (PRD 6.9). Deep links from Tasks/CRM
     // AI (models/agents/actions) must leave those modes or Settings never renders.
-    // Legacy `models` sub-tab is mapped to merged `tools` (LLM + search tools).
+    // Legacy `models` and `agents` sub-tabs map to merged `tools`.
     const resolved =
-      subTab === 'models' ? 'tools' : (subTab ?? undefined);
+      subTab === 'models' || subTab === 'agents' ? 'tools' : (subTab ?? undefined);
     set((s) => ({
       activeView: 'settings',
       activeSettingsSubTab: resolved ?? s.activeSettingsSubTab,

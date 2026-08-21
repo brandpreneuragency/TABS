@@ -39,7 +39,7 @@ function prettyHTML(html: string): string {
 }
 
 interface EditorWorkspaceProps {
-  onEditorReady: (editor: Editor) => void;
+  onEditorReady?: (editor: Editor) => void;
 }
 
 export function EditorWorkspace({ onEditorReady }: EditorWorkspaceProps) {
@@ -79,7 +79,7 @@ export function EditorWorkspace({ onEditorReady }: EditorWorkspaceProps) {
     (editor: Editor) => {
       setLocalEditor(editor);
       editorRef.current = editor;
-      onEditorReady(editor);
+      onEditorReady?.(editor);
     },
     [onEditorReady]
   );

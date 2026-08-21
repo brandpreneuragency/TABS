@@ -378,11 +378,11 @@ describe('agent runtime kernel', () => {
 
   it('consumes steering at safe turn boundaries and never during tool execution', async () => {
     const events: string[] = [];
-    let runtimeRef: AgentRuntime | undefined;
+    const runtimeBox: { current?: AgentRuntime } = {};
     let runId = '';
     const echo = makeTool('echo', async () => {
       events.push('tool');
-      const steered = await runtimeRef?.submitInput(runId, 'steer during tool');
+      const steered = await runtimeBox.current?.submitInput(runId, 'steer during tool');
       expect(steered?.status).toBe('running');
       expect(steered?.pendingInputCount).toBe(1);
       return { ok: true, summary: 'echo' };
@@ -394,7 +394,7 @@ describe('agent runtime kernel', () => {
       ],
       tools: [echo],
     });
-    runtimeRef = harness.runtime;
+    runtimeBox.current = harness.runtime;
     runId = harness.run.id;
     const persist = harness.store.persistAssistantTurn.bind(harness.store);
     harness.store.persistAssistantTurn = async (message, toolCalls) => {

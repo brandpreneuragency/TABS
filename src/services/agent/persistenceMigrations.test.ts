@@ -40,7 +40,16 @@ const COMPANION_V1_STORES = {
   crmSettings: 'key',
 };
 
-const MAIN_RETAINED_TABLES = Object.keys(MAIN_V12_STORES);
+const MAIN_DROPPED_TABLES = [
+  'chatMessages',
+  'chatThreads',
+  'agents',
+  'taskAIChangeBatches',
+];
+const MAIN_RETAINED_V12_TABLES = Object.keys(MAIN_V12_STORES);
+const MAIN_V14_RETAINED_TABLES = MAIN_RETAINED_V12_TABLES.filter(
+  (name) => !MAIN_DROPPED_TABLES.includes(name),
+);
 const MAIN_HARNESS_TABLES = [
   'agentRuns',
   'agentEvents',
@@ -56,6 +65,27 @@ const MAIN_HARNESS_TABLES = [
   'agentRuntimeLeases',
   'taskProjectionJobs',
 ];
+const MAIN_V13_STORES = {
+  ...MAIN_V12_STORES,
+  agentRuns:
+    'id, status, createdAt, updatedAt, queuePriority, archivedAt, parentRunId, [status+queuePriority]',
+  agentEvents: 'id, runId, &[runId+sequence], type, createdAt',
+  agentMessages: 'id, runId, &[runId+messageIndex], role, createdAt',
+  agentProviderAttempts:
+    'id, runId, status, turn, startedAt, &[runId+executionEpoch+turn+attempt]',
+  agentToolCalls:
+    'id, runId, &operationId, effectFingerprint, status, toolName, createdAt',
+  agentToolAttempts:
+    'id, runId, toolCallId, operationId, status, &[toolCallId+executionEpoch+attempt]',
+  agentApprovals: 'id, runId, toolCallId, status, createdAt',
+  agentPolicyGrants: 'id, runId, policyRevision, toolName, expiresAt',
+  agentArtifacts: 'id, runId, kind, createdAt',
+  agentProfiles: 'id, name, isDefault, updatedAt',
+  agentOperationReceipts: 'id, &operationId, effectFingerprint, domain, committedAt',
+  agentRuntimeLeases: 'id, ownerId, expiresAt',
+  taskProjectionJobs:
+    'id, taskId, projectionKey, sourceOperationId, status, nextAttemptAt, createdAt, &[sourceOperationId+projectionKey], [status+nextAttemptAt]',
+};
 const COMPANION_RETAINED_TABLES = Object.keys(COMPANION_V1_STORES);
 
 async function resetDatabases(): Promise<void> {
@@ -70,7 +100,7 @@ async function seedLegacyMain(): Promise<void> {
   legacy.version(12).stores(MAIN_V12_STORES);
   await legacy.open();
   await legacy.transaction('rw', legacy.tables, async () => {
-    for (const tableName of MAIN_RETAINED_TABLES) {
+    for (const tableName of MAIN_RETAINED_V12_TABLES) {
       const primaryKey = tableName === 'settings' ? 'key' : 'id';
       await legacy.table(tableName).add({ [primaryKey]: `retained-${tableName}` });
     }
@@ -106,18 +136,67 @@ async function expectUnique(
 beforeEach(resetDatabases);
 afterEach(resetDatabases);
 
-describe('main database version 12 to 13', () => {
-  it('adds the exact harness stores without adding version 14 or dropping retained data', async () => {
+async function seedLegacyV13(): Promise<void> {
+  const legacy = new Dexie(MAIN_DB_NAME);
+  legacy.version(13).stores(MAIN_V13_STORES);
+  await legacy.open();
+  await legacy.transaction('rw', legacy.tables, async () => {
+    await legacy.table('workspaces').add({ id: 'ws-1', name: 'Workspace', updatedAt: 1, order: 0 });
+    await legacy.table('providerConfigs').add({ id: 'openai', provider: 'openai', isActive: true });
+    await legacy.table('settings').bulkAdd([
+      { key: 'systemInstructions', value: 'old global instructions' },
+      { key: 'activeAgentId', value: 'default_writer' },
+      { key: 'activeTaskAgentId', value: 'default_task' },
+      { key: 'modelDefaults', value: '[]' },
+      { key: 'activeProviderId', value: 'openai' },
+      { key: 'theme', value: 'dark' },
+    ]);
+    await legacy.table('quickPrompts').add({
+      id: 'prompt-1',
+      title: 'Follow up',
+      prompt: 'Draft a follow-up',
+      scope: 'writer',
+      createdAt: 1,
+    });
+    await legacy.table('actionGroups').add({
+      id: 'group-1',
+      name: 'Writing',
+      scope: 'task',
+      order: 0,
+      createdAt: 1,
+    });
+    await legacy.table('tasks').add({ id: 'task-1', title: 'Task', updatedAt: 1, order: 0 });
+    await legacy.table('projects').add({ id: 'project-1', name: 'Project' });
+    await legacy.table('taskComments').add({ id: 'comment-1', taskId: 'task-1', createdAt: 1 });
+    await legacy.table('chatMessages').add({ id: 'msg-1', threadId: 'thread-1', timestamp: 1 });
+    await legacy.table('chatThreads').add({ id: 'thread-1', mode: 'writer', updatedAt: 1 });
+    await legacy.table('agents').add({ id: 'persona-1', name: 'Writer', isDefault: true, scope: 'writer' });
+    await legacy.table('taskAIChangeBatches').add({ id: 'batch-1', taskId: 'task-1', createdAt: 1 });
+    await legacy.table('agentRuns').add({ id: 'run-1', status: 'queued', createdAt: 1, updatedAt: 1, queuePriority: 0 });
+  });
+  legacy.close();
+}
+
+describe('main database version 12 to 14', () => {
+  it('adds harness stores, drops old AI tables, and keeps non-AI data', async () => {
     await seedLegacyMain();
 
     const migrated = new TabsDB();
     await migrated.open();
 
-    expect(migrated.verno).toBe(13);
+    expect(migrated.verno).toBe(14);
     expect(migrated.tables.map((table) => table.name).sort()).toEqual(
-      [...MAIN_RETAINED_TABLES, ...MAIN_HARNESS_TABLES].sort(),
+      [...MAIN_V14_RETAINED_TABLES, ...MAIN_HARNESS_TABLES].sort(),
     );
-    for (const tableName of MAIN_RETAINED_TABLES) {
+    for (const tableName of MAIN_DROPPED_TABLES) {
+      expect(migrated.tables.some((table) => table.name === tableName), tableName).toBe(false);
+    }
+    for (const tableName of MAIN_V14_RETAINED_TABLES) {
+      if (tableName === 'settings') {
+        expect(await migrated.settings.get('retained-settings')).toBeDefined();
+        expect(await migrated.settings.get('agent.harness.enabled')).toMatchObject({ value: true });
+        continue;
+      }
       expect(await migrated.table(tableName).count(), tableName).toBe(1);
     }
     for (const tableName of MAIN_HARNESS_TABLES) {
@@ -208,6 +287,52 @@ describe('main database version 12 to 13', () => {
     expect(await migrated.settings.get('retained-settings')).toBeDefined();
 
     migrated.close();
+  });
+});
+
+describe('main database version 13 to 14', () => {
+  it('drops old AI records, maps scopes to general, and preserves settings classes', async () => {
+    await seedLegacyV13();
+
+    const migrated = new TabsDB();
+    await migrated.open();
+
+    expect(migrated.verno).toBe(14);
+    for (const tableName of MAIN_DROPPED_TABLES) {
+      expect(migrated.tables.some((table) => table.name === tableName), tableName).toBe(false);
+    }
+
+    expect(await migrated.workspaces.get('ws-1')).toMatchObject({ name: 'Workspace' });
+    expect(await migrated.providerConfigs.get('openai')).toMatchObject({ provider: 'openai' });
+    expect(await migrated.tasks.get('task-1')).toMatchObject({ title: 'Task' });
+    expect(await migrated.projects.get('project-1')).toMatchObject({ name: 'Project' });
+    expect(await migrated.taskComments.get('comment-1')).toMatchObject({ taskId: 'task-1' });
+    expect(await migrated.agentRuns.get('run-1')).toMatchObject({ status: 'queued' });
+
+    const prompt = await migrated.quickPrompts.get('prompt-1');
+    expect(prompt).toMatchObject({ scope: 'general', title: 'Follow up' });
+    const group = await migrated.actionGroups.get('group-1');
+    expect(group).toMatchObject({ scope: 'general', name: 'Writing' });
+
+    expect(await migrated.settings.get('systemInstructions')).toBeUndefined();
+    expect(await migrated.settings.get('activeAgentId')).toBeUndefined();
+    expect(await migrated.settings.get('activeTaskAgentId')).toBeUndefined();
+    expect(await migrated.settings.get('modelDefaults')).toBeUndefined();
+    expect(await migrated.settings.get('activeProviderId')).toMatchObject({ value: 'openai' });
+    expect(await migrated.settings.get('theme')).toMatchObject({ value: 'dark' });
+    expect(await migrated.settings.get('agent.harness.enabled')).toMatchObject({ value: true });
+
+    migrated.close();
+  });
+
+  it('opens a clean install at version 14 without old AI tables', async () => {
+    const installed = new TabsDB();
+    await installed.open();
+    expect(installed.verno).toBe(14);
+    expect(installed.tables.map((table) => table.name).sort()).toEqual(
+      [...MAIN_V14_RETAINED_TABLES, ...MAIN_HARNESS_TABLES].sort(),
+    );
+    installed.close();
   });
 });
 

@@ -15,7 +15,7 @@ import type {
   UpdateTaskInput,
 } from '../../tasks/taskService';
 import { TaskNotFoundError, TaskRevisionConflictError } from '../../tasks/taskService';
-import type { DocumentCreateArgs, DocumentMutationResult, DocumentUpdateArgs } from '../../documents/documentCommands';
+import type { DocumentCreateArgs, DocumentMutationResult } from '../../documents/documentCommands';
 import { MemoryPolicyStore, PolicyEngine } from '../policyEngine';
 import { ToolRegistry } from '../toolRegistry';
 import { createCrmMutationTools, type CRMMutationPort } from './crmTools';
@@ -389,13 +389,13 @@ describe('approval rejection and cancellation', () => {
 describe('filesystem uncertainty and resource links', () => {
   it('moves unknown filesystem writes to review without inventing success', async () => {
     const commands = {
-      async createDocument(_args: DocumentCreateArgs): Promise<DocumentMutationResult> {
+      async createDocument(): Promise<DocumentMutationResult> {
         throw new FilesystemUncertaintyError('Write finished without a durable hash', {
           expectedInputHash: 'absent',
           expectedOutputHash: 'sha256:desired',
         });
       },
-      async updateDocument(_args: DocumentUpdateArgs): Promise<DocumentMutationResult> {
+      async updateDocument(): Promise<DocumentMutationResult> {
         throw new Error('unused');
       },
     };

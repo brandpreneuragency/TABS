@@ -8,7 +8,6 @@ import {
 } from '../../stores/uiStore';
 import { LeftNarrowSidebar } from './LeftNarrowSidebar';
 import { FileViewerPanel } from '../fileViewer/FileViewerPanel';
-import { RightPanelSubheader } from '../sidebar/RightPanelSubheader';
 import { TerminalPanel } from '../terminal/TerminalPanel';
 import { SettingsDocument } from '../settings/SettingsDocument';
 import {
@@ -94,7 +93,6 @@ function UniversalWorkspaceShell({
   const fileViewerOpen = useUIStore((s) => s.fileViewerOpen);
   const activeTaskPage = useUIStore((s) => s.activeTaskPage);
   const activeCRMPage = useUIStore((s) => s.activeCRMPage);
-  const activeSettingsSubTab = useUIStore((s) => s.activeSettingsSubTab);
   const mode = useUIStore(selectActiveWorkspaceMode);
   const contextPanelVisible = useUIStore(
     (s) => selectIsContextPanelAvailable(s) && selectIsContextPanelOpen(s),
@@ -117,21 +115,7 @@ function UniversalWorkspaceShell({
       <FileViewerPanel />
     </div>
   ) : (
-    <>
-      {mode === 'settings' ? (
-        <RightPanelSubheader
-          mode="writer"
-          workspaceId={null}
-          taskId={null}
-          settingsTab={activeSettingsSubTab}
-        />
-      ) : mode === 'tasks' ? (
-        <RightPanelSubheader mode="task" />
-      ) : (
-        <RightPanelSubheader />
-      )}
-      <div className="flex-1 min-h-0 overflow-hidden">{sidebar}</div>
-    </>
+    <div className="flex-1 min-h-0 overflow-hidden">{sidebar}</div>
   );
 
   return (

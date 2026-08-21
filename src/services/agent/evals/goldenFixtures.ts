@@ -32,7 +32,6 @@ import type {
 import type {
   DocumentCreateArgs,
   DocumentMutationResult,
-  DocumentUpdateArgs,
 } from '../../documents/documentCommands';
 import { AgentRuntime } from '../agentRuntime';
 import {
@@ -537,7 +536,7 @@ export function createDocumentPort(world: GoldenWorld): DocumentMutationPort {
       fireFault(world, 'after_mutation_commit');
       return result;
     },
-    async updateDocument(_args: DocumentUpdateArgs): Promise<DocumentMutationResult> {
+    async updateDocument(): Promise<DocumentMutationResult> {
       throw new Error('Golden fixture does not update documents.');
     },
   };

@@ -181,7 +181,7 @@ export function createMemoryExecutorStore(now: () => number = Date.now): MemoryE
       const created = { ...clone(run), nextSequence: run.nextSequence + 1 };
       return putRun(created);
     },
-    async updateRunWithEvent(runId, projection, _type, _data) {
+    async updateRunWithEvent(runId, projection) {
       const run = requireRun(runId);
       putRun({
         ...run,

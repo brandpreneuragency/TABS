@@ -584,48 +584,6 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
   padding-right: 0;
 }
 
-/* ---- AI sidebar (#ai-sidebar + .panel) ----
- * Preserve the rounded card visual (border-radius: 8px,
- * padding: 5px 10px 15px 10px). */
-.panel#ai-sidebar {
-  border-radius: 8px;
-  padding: 5px 10px 15px 10px;
-}
-
-/* Chat thread (#scroll-ai) and empty-state: the body. */
-#scroll-ai.panel-body,
-#chat-empty-state.panel-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  padding: 0;
-  margin: 0;
-}
-
-/* Agent 8: container context for the chat thread / empty
- * state inside the AI sidebar. The messages inside adapt
- * to the right-panel width. */
-#scroll-ai {
-  container-type: inline-size;
-  container-name: chat-thread;
-}
-
-#chat-empty-state {
-  container-type: inline-size;
-  container-name: chat-empty-state;
-}
-
-/* Chat input footer: the composer at the bottom. */
-.ai-sidebar-composer.panel-footer {
-  flex: 0 0 auto;
-  min-height: 0;
-  padding: 0;
-  /* Agent 8: container context for the chat input
-   * composer in the right detail panel. */
-  container-type: inline-size;
-  container-name: chat-composer;
-}
-
 /* ---- File viewer (.file-viewer-panel + .panel) ----
  * The file viewer already has a header (#file-viewer-header)
  * and content area (.file-viewer-content). Add the panel
@@ -726,22 +684,6 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
   align-items: stretch;
   padding: 10px 0 0;
   gap: 0;
-}
-
-/* ---- AI sidebar body host ----
- * The AI sidebar body hosts ChatThread (which renders its own
- * `#scroll-ai` scroll viewport). The host is a flex column
- * that lets the inner thread take the full remaining height
- * and scroll internally. */
-.ai-scroll-host {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  padding-left: 18px;
-  padding-right: 18px;
 }
 
 /* =========================================================
@@ -872,35 +814,8 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
 /* ---- Detail panel ----
  * Default width is `var(--right-panel-width)` =
  * `clamp(360px, 32vw, 540px)`. The detail panel hosts
- * the AI sidebar (chat thread + chat composer) or the
- * file viewer. The container queries below target the
- * chat composer + chat thread + chat empty state.
- * The task-detail-panel content (comments + subtasks)
- * lives in the *main panel*, not here Ã¢â‚¬â€ see the
- * main-panel block above.
- *  - <= 520px: hide optional labels in the chat
- *    composer's dropup buttons (model name, agent name).
- *    The icons remain.
- *  - <= 420px: hide secondary message metadata
- *    (timestamp, sender label) on chat bubbles.
- *  - <= 360px: tighten the chat composer padding.
- *  - <= 320px: hide the empty-state subtitle.
+ * the Work-OS assistant or the file viewer.
  */
-@container detail-panel (max-width: 520px) {
-  .chat-input-dropup-label {
-    display: none;
-  }
-}
-
-@container detail-panel (max-width: 420px) {
-  /* Optional labels on chat bubbles (timestamps) collapse
-   * to keep the message body readable. The bubble itself
-   * remains. */
-  [data-message-id] > .subtle {
-    display: none;
-  }
-}
-
 @container detail-panel (max-width: 360px) {
   .detail-meta-row,
   .tdp-comment-row {
@@ -913,10 +828,6 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
     display: none;
   }
 
-  #chat-input-card {
-    padding: 0;
-  }
-
   .composer-row {
     gap: var(--space-1);
   }
@@ -925,10 +836,6 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
 @container detail-panel (max-width: 320px) {
   .detail-tabs {
     overflow-x: auto;
-  }
-
-  .chat-empty-state-subtitle {
-    display: none;
   }
 }
 
@@ -949,39 +856,12 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
   }
 }
 
-/* ---- Chat composer (inside AI sidebar) ----
- * The composer has a separate container context because
- * the AI sidebar's panel width is different from the
- * main panel's. */
-@container chat-composer (max-width: 360px) {
-  .chat-input-bottom-col--model,
-  .chat-input-bottom-col--agent {
-    display: none;
-  }
-}
-
-@container chat-composer (max-width: 280px) {
-  .chat-input-bottom-col--tools .chat-input-dropup-btn {
-    width: var(--control-height-sm);
-  }
-}
-
 /* ---- Comment composer (inside task detail panel) ----
  * The comment input card has its own container context
  * because the task detail panel width can be very
  * different from the right detail panel width. */
 @container comment-composer (max-width: 320px) {
   .task-comment-bottom-col--left .composer-left--fill {
-    display: none;
-  }
-}
-
-/* ---- Chat thread (inside AI sidebar) ----
- * Messages in the right-panel chat thread. At narrow
- * right-panel widths, message bubbles take more of the
- * available width and the timestamp collapses. */
-@container chat-thread (max-width: 360px) {
-  [data-message-id] > .subtle {
     display: none;
   }
 }

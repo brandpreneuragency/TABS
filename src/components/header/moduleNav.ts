@@ -2,7 +2,6 @@ import {
   KanbanSquare,
   Palette,
   UserPlus,
-  Users,
   Zap,
   FileText,
   Inbox,
@@ -54,5 +53,4 @@ export const SETTINGS_HEADER_TABS: ModuleNavItem<SettingsSubTab>[] = [
   { key: 'tools', label: 'Tools', icon: Wrench },
   { key: 'actions', label: 'Actions', icon: Zap },
   { key: 'appearance', label: 'Appearance', icon: Palette },
-  { key: 'agents', label: 'Agents', icon: Users },
 ];

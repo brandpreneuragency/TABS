@@ -31,9 +31,17 @@ export function EditorTopBar({ editor, onSave, fileName, onTitleCommit }: Editor
   const [searchStateByDoc, setSearchStateByDoc] = useState<Record<string, DocSearchState>>({});
   const findInputRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const committedTitle = fileName ?? '';
   const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(fileName ?? '');
+  const [titleDraft, setTitleDraft] = useState(committedTitle);
+  const [syncedFileName, setSyncedFileName] = useState(fileName);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  if (fileName !== syncedFileName) {
+    setSyncedFileName(fileName);
+    setTitleDraft(committedTitle);
+    setIsEditingTitle(false);
+  }
 
   const activeWs = useWorkspaceStore((s) =>
     s.workspaces.find((w) => w.id === s.activeWorkspaceId) ?? null
@@ -41,12 +49,6 @@ export function EditorTopBar({ editor, onSave, fileName, onTitleCommit }: Editor
   const currentFile = activeWs?.currentFile ?? null;
   const rainbowMode = useUIStore((s) => s.rainbowMode);
   const toggleRainbowMode = useUIStore((s) => s.toggleRainbowMode);
-
-  // Keep draft in sync when file changes
-  useEffect(() => {
-    setTitleDraft(fileName ?? '');
-    setIsEditingTitle(false);
-  }, [fileName]);
 
   useEffect(() => {
     if (isEditingTitle) {

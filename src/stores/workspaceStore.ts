@@ -618,16 +618,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     } catch (err) {
       console.warn('[workspaceStore] failed to delete workspace:', err);
     }
-    // Cascade: delete associated chat threads and messages
-    try {
-      const threads = await db.chatThreads.where('workspaceId').equals(id).toArray();
-      for (const thread of threads) {
-        await db.chatMessages.where('threadId').equals(thread.id).delete();
-      }
-      await db.chatThreads.where('workspaceId').equals(id).delete();
-    } catch (err) {
-      console.warn('[workspaceStore] failed to delete associated chat:', err);
-    }
+    // Chat threads were dropped in Dexie version 14. Harness runs stay in agent tables.
 
     // Clean up folder tree cache and editor state cache
     folderTreeCache.delete(id);

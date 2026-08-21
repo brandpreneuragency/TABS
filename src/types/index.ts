@@ -296,8 +296,8 @@ export interface AppSettings {
   value: string | number | boolean | Record<string, unknown>;
 }
 
-/** Scope for custom quick-actions (Settings → Actions and chat action pickers). */
-export type ActionScope = 'writer' | 'task' | 'crm';
+/** Scope for custom quick-actions (Settings → Actions and run starters). */
+export type ActionScope = 'general';
 
 export interface QuickPrompt {
   id: string;

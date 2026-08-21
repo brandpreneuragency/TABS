@@ -170,12 +170,6 @@ export const useDocumentStore = create<DocumentStore>((set, get) => ({
     } catch (err) {
       console.warn('[documentStore] failed to delete document:', err);
     }
-    // Cascade: remove associated chat messages
-    try {
-      await db.chatMessages.where('documentId').equals(id).delete();
-    } catch (err) {
-      console.warn('[documentStore] failed to delete associated chat messages:', err);
-    }
     const docs = get().documents.filter((d) => d.id !== id);
     let activeId = get().activeDocumentId;
     if (activeId === id) activeId = docs[docs.length - 1]?.id ?? null;

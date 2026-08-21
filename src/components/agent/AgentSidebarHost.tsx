@@ -83,11 +83,16 @@ export function AgentSidebarHost({ client }: AgentSidebarHostProps) {
   }, [agentClient, selectedRunId]);
 
   useEffect(() => {
-    void refresh();
+    const immediate = window.setTimeout(() => {
+      void refresh();
+    }, 0);
     const timer = window.setInterval(() => {
       void refresh();
     }, 2000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(immediate);
+      window.clearInterval(timer);
+    };
   }, [refresh]);
 
   const withError = useCallback(async (work: () => Promise<unknown>) => {

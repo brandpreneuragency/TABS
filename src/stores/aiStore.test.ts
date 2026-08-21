@@ -9,11 +9,6 @@ vi.mock('../services/db', () => {
   const store = new Map<string, unknown>();
   return {
     db: {
-      agents: {
-        toArray: vi.fn().mockResolvedValue([]),
-        put: vi.fn().mockResolvedValue(undefined),
-        delete: vi.fn().mockResolvedValue(undefined),
-      },
       providerConfigs: {
         toArray: vi.fn().mockResolvedValue([]),
         put: vi.fn().mockImplementation(async (config: Record<string, unknown>) => {
@@ -203,9 +198,6 @@ beforeEach(() => {
     activeProviderId: null,
     hiddenModels: [],
     taskModelDefaults: [],
-    agents: [],
-    activeAgentId: '',
-    activeTaskAgentId: '',
     isLoaded: false,
   });
 });
