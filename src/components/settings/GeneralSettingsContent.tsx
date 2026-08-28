@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../stores/uiStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { isNativeFsAvailable, openFolderDialog } from '../../services/fs-adapter';
+import { canStepEditorFontSize, stepEditorFontSize } from '../../stores/editorFontSize';
 
 const FONT_FAMILIES = ['Inter', 'Georgia', 'Arial', 'Verdana', 'Trebuchet MS'];
 
@@ -45,6 +46,9 @@ export function SettingsContent() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const canDecreaseFont = canStepEditorFontSize(editorFontSize, -1);
+  const canIncreaseFont = canStepEditorFontSize(editorFontSize, 1);
+
   return (
     <div className="settings-general-content flex-col h-full w-full" style={{ background: 'var(--c-background-1)', overflow: 'hidden', display: 'flex' }}>
       <div className="settings-general-content__body flex-1 col gap-4" style={{ padding: '0px 0px 16px 0px', overflowY: 'auto' }}>
@@ -55,20 +59,20 @@ export function SettingsContent() {
               <div className="row-xs" style={{ border: '1px solid var(--c-border-1)', borderRadius: 9999, padding: '2px 4px' }}>
                 <button
                   type="button"
-                  disabled={editorFontSize <= 12}
-                  onClick={() => setEditorFontSize((editorFontSize - 2) as 12 | 14 | 16)}
+                  disabled={!canDecreaseFont}
+                  onClick={() => setEditorFontSize(stepEditorFontSize(editorFontSize, -1))}
                   className="btn-icon"
-                  style={{ width: 'var(--control-height-sm)', height: 'var(--control-height-sm)', borderRadius: 9999, fontSize: 'var(--fs-base)', lineHeight: 1, opacity: editorFontSize <= 12 ? 0.3 : 1, cursor: editorFontSize <= 12 ? 'not-allowed' : 'pointer' }}
+                  style={{ width: 'var(--control-height-sm)', height: 'var(--control-height-sm)', borderRadius: 9999, fontSize: 'var(--fs-base)', lineHeight: 1, opacity: canDecreaseFont ? 1 : 0.3, cursor: canDecreaseFont ? 'pointer' : 'not-allowed' }}
                 >
                   −
                 </button>
                 <span className="nowrap" style={{ fontSize: 'var(--fs-base)', color: 'var(--c-text-1)', width: 32, textAlign: 'center' }}>{editorFontSize}px</span>
                 <button
                   type="button"
-                  disabled={editorFontSize >= 16}
-                  onClick={() => setEditorFontSize((editorFontSize + 2) as 12 | 14 | 16)}
+                  disabled={!canIncreaseFont}
+                  onClick={() => setEditorFontSize(stepEditorFontSize(editorFontSize, 1))}
                   className="btn-icon"
-                  style={{ width: 'var(--control-height-sm)', height: 'var(--control-height-sm)', borderRadius: 9999, fontSize: 'var(--fs-base)', lineHeight: 1, opacity: editorFontSize >= 16 ? 0.3 : 1, cursor: editorFontSize >= 16 ? 'not-allowed' : 'pointer' }}
+                  style={{ width: 'var(--control-height-sm)', height: 'var(--control-height-sm)', borderRadius: 9999, fontSize: 'var(--fs-base)', lineHeight: 1, opacity: canIncreaseFont ? 1 : 0.3, cursor: canIncreaseFont ? 'pointer' : 'not-allowed' }}
                 >
                   +
                 </button>

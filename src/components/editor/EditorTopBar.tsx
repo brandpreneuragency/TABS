@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { Search, Undo2, Redo2, ChevronUp, ChevronDown, Replace, ReplaceAll, Save, Rainbow } from 'lucide-react';
+import { AssistantToggle, ContextPanelToggle } from '../layout/workspace';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -198,6 +199,7 @@ export function EditorTopBar({ editor, onSave, fileName, onTitleCommit }: Editor
   return (
     <div id="editor-topbar" className="editor-topbar">
       <div className="editor-topbar-col">
+        <ContextPanelToggle id="editor-topbar-context" iconSize={14} />
         <button
           id="editor-topbar-save"
           type="button"
@@ -369,6 +371,7 @@ export function EditorTopBar({ editor, onSave, fileName, onTitleCommit }: Editor
         >
           <Redo2 size={13} />
         </button>
+        <AssistantToggle id="editor-topbar-assistant" iconSize={14} />
       </div>
     </div>
   );

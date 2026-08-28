@@ -1,13 +1,21 @@
 import {
   CheckCircle,
   FileText,
+  Minus,
+  Plus,
   TerminalSquare,
   Users,
   Settings as SettingsIcon,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useUIStore } from '../../stores/uiStore';
+import {
+  canStepEditorFontSize,
+  stepEditorFontSize,
+} from '../../stores/editorFontSize';
 
 export function LeftNarrowSidebar() {
+  const { t } = useTranslation();
   const taskMode = useUIStore((s) => s.taskMode);
   const setTaskMode = useUIStore((s) => s.setTaskMode);
   const contextPanelOpenByMode = useUIStore((s) => s.contextPanelOpenByMode);
@@ -20,9 +28,13 @@ export function LeftNarrowSidebar() {
   const setActiveView = useUIStore((s) => s.setActiveView);
   const terminalPanelOpen = useUIStore((s) => s.terminalPanelOpen);
   const setTerminalPanelOpen = useUIStore((s) => s.setTerminalPanelOpen);
+  const editorFontSize = useUIStore((s) => s.editorFontSize);
+  const setEditorFontSize = useUIStore((s) => s.setEditorFontSize);
 
   const docModeOn = !taskMode && !crmMode && activeView !== 'settings';
   const settingsOn = !taskMode && !crmMode && activeView === 'settings';
+  const canDecreaseFont = canStepEditorFontSize(editorFontSize, -1);
+  const canIncreaseFont = canStepEditorFontSize(editorFontSize, 1);
 
   return (
     <div id="nav-bar" className="nav-bar">
@@ -96,6 +108,28 @@ export function LeftNarrowSidebar() {
       </div>
 
       <div className="nav-section nav-section-bottom">
+        <button
+          id="nav-btn-font-increase"
+          type="button"
+          disabled={!canIncreaseFont}
+          onClick={() => setEditorFontSize(stepEditorFontSize(editorFontSize, 1))}
+          title={t('settings.increaseTextSize')}
+          aria-label={t('settings.increaseTextSize')}
+          className="nav-btn"
+        >
+          <Plus size={15} />
+        </button>
+        <button
+          id="nav-btn-font-decrease"
+          type="button"
+          disabled={!canDecreaseFont}
+          onClick={() => setEditorFontSize(stepEditorFontSize(editorFontSize, -1))}
+          title={t('settings.decreaseTextSize')}
+          aria-label={t('settings.decreaseTextSize')}
+          className="nav-btn"
+        >
+          <Minus size={15} />
+        </button>
         <button
           id="nav-btn-terminal"
           type="button"

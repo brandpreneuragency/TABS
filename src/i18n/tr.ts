@@ -16,6 +16,7 @@ const tr = {
   },
   editor: {
     addBlock: 'Blok ekle',
+    closeToolbar: 'Kapat',
     image: 'Gorsel',
     heading1: 'Baslik 1',
     heading2: 'Baslik 2',
@@ -95,6 +96,8 @@ const tr = {
     manageProviders: 'Sağlayıcıları, API anahtarlarını ve modelleri yönet',
     appearance: 'Görünüm',
     textSize: 'Metin Boyutu',
+    increaseTextSize: 'Metin boyutunu büyüt',
+    decreaseTextSize: 'Metin boyutunu küçült',
     fontFamily: 'Yazı Tipi',
     language: 'Dil',
     defaultFolder: 'Varsayılan çalışma alanı klasörü',

@@ -754,24 +754,46 @@ input.subtasks-title-input:focus-visible {
   min-width: 0;
 }
 
-/* When overflowing, squeeze the last visible tab and ellipsize its title */
-.tabs-row[data-overflowing="true"] > :last-child:not(.tabs-new-btn) {
+/* When overflowing, squeeze the last visible active tab and ellipsize its title.
+   Passive tabs have no min-width so they stay content-sized. */
+.tabs-row[data-overflowing="true"] > .tab-active:last-child:not(.tabs-new-btn) {
   flex: 0 0 auto;
   min-width: 56px;
   max-width: 64px;
 }
 
-/* Cap individual tab width so they stay uniform */
+/* Workspace passives: once the row fills its wrapper, cap at 80px so the
+   active tab stays readable. Unconstrained overflow is measured in TabBar. */
+.tabs-row[data-overflowing="true"] > [id^="tab-ws-"].tab-passive {
+  max-width: 80px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.tabs-row[data-overflowing="true"] > [id^="tab-ws-"].tab-passive .trunc {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tabs-row[data-overflowing="true"] > [id^="tab-ws-"].tab-passive > svg,
+.tabs-row[data-overflowing="true"] > [id^="tab-ws-"].tab-passive > .tab-close {
+  flex-shrink: 0;
+}
+
+/* Cap individual tab width so they stay uniform.
+   Active tabs share Documents-mode sizing (pill, fit-content). */
 .tabs-row > .tab-active {
   max-width: 180px;
-  padding-right: 6px;
-  padding-top: 8px;
+  width: fit-content;
+  padding-top: 6px;
+  padding-right: 12px;
   padding-bottom: 6px;
 }
 
 .tabs-row > .tab-passive {
   max-width: 180px;
   width: fit-content;
+  min-width: unset;
   padding-left: 12px;
   padding-right: 12px;
 }
@@ -781,26 +803,6 @@ input.subtasks-title-input:focus-visible {
 .tabs-row > [id^="tab-ws-"].tab-passive {
   max-width: 266px;
   width: fit-content;
-}
-
-/* Consistent tab sizing for doc and module tabs */
-.tabs-row > [id^="tab-doc-active"].tab-active,
-.tabs-row > [id^="tab-module-active"].tab-active {
-  padding-top: 6px;
-  padding-right: 12px;
-  padding-bottom: 6px;
-}
-
-.tabs-row > [id^="tab-ws-"].tab-active {
-  padding-top: 6px;
-  padding-right: 12px;
-  padding-bottom: 6px;
-}
-
-/* Module header tabs: fixed width for uniform layout */
-.tabs-row > [id^="tab-module-active"],
-.tabs-row > [id^="tab-module-passive"] {
-  width: 100px;
 }
 
 .tabs-row > .tab-active svg,
@@ -882,8 +884,8 @@ input.subtasks-title-input:focus-visible {
 }
 
 [id^="tab-module-active"] {
-  border-radius: 0;
-  height: 32px;
+  border-radius: 8px;
+  height: 24px;
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -895,29 +897,10 @@ input.subtasks-title-input:focus-visible {
   margin-bottom: 0;
 }
 
-[id^="tab-doc-active"].tab-active {
-  border: none;
-  border-radius: 0;
-  height: 32px;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  background: var(--c-background-2);
-  width: fit-content;
-}
-
-[id^="tab-module-active"].tab-active {
-  border: none;
-  border-radius: 0;
-  height: 32px;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  background: var(--c-background-2);
-}
-
+[id^="tab-doc-active"].tab-active,
+[id^="tab-module-active"].tab-active,
+[id^="tab-task-active"].tab-active,
+[id^="tab-chat-active"].tab-active,
 [id^="tab-ws-active"].tab-active {
   border: none;
   border-radius: 8px;
@@ -926,12 +909,7 @@ input.subtasks-title-input:focus-visible {
   margin-bottom: 0;
   gap: 4px;
   background: var(--c-background-2);
-}
-
-[id^="tab-task-active"].tab-active {
-  border: none;
-  border-radius: 0;
-  height: 100%;
+  width: fit-content;
 }
 
 [id^="tab-task-passive"].tab-passive {
@@ -1136,14 +1114,15 @@ input.subtasks-title-input:focus-visible {
 }
 
 .tab-active {
-  background: var(--c-background-1);
+  background: var(--c-background-2);
   border-top: none;
   border-right: none;
   border-left: none;
   border-bottom: none;
-  border-radius: 0;
-  height: 100%;
+  border-radius: 8px;
+  height: 24px;
   margin-top: 0;
+  gap: 4px;
   color: white;
   font-size: var(--fs-base);
   font-weight: 500;
@@ -1159,6 +1138,7 @@ input.subtasks-title-input:focus-visible {
   border-bottom: none;
   border-radius: 0;
   height: 100%;
+  min-width: unset;
   color: var(--c-text-2);
   font-size: var(--fs-base);
   font-weight: 500;
@@ -2420,6 +2400,15 @@ button.calendar-task-row {
   background: transparent;
   color: var(--c-accent-1);
 }
+.nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  color: var(--c-text-2);
+}
+.nav-btn:disabled:hover {
+  background: transparent;
+  color: var(--c-text-2);
+}
 #nav-btn-settings {
   border-radius: 0;
 }
@@ -3662,35 +3651,20 @@ button.calendar-task-row {
   background: var(--c-background-2);
 }
 :root .tab-active {
-  background: var(--c-background-1);
+  background: var(--c-background-2);
   border-top: none;
   border-right: none;
   border-left: none;
   border-bottom: none;
-  border-radius: 0;
+  border-radius: 8px;
+  height: 24px;
+  gap: 4px;
   color: var(--c-text-1);
 }
-:root [id^="tab-doc-active"].tab-active {
-  border: none;
-  border-radius: 0;
-  height: 32px;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  background: var(--c-background-2);
-  width: fit-content;
-}
-:root [id^="tab-module-active"].tab-active {
-  border: none;
-  border-radius: 0;
-  height: 32px;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  background: var(--c-background-2);
-}
+:root [id^="tab-doc-active"].tab-active,
+:root [id^="tab-module-active"].tab-active,
+:root [id^="tab-task-active"].tab-active,
+:root [id^="tab-chat-active"].tab-active,
 :root [id^="tab-ws-active"].tab-active {
   border: none;
   border-radius: 8px;
@@ -3699,11 +3673,7 @@ button.calendar-task-row {
   margin-bottom: 0;
   gap: 4px;
   background: var(--c-background-2);
-}
-:root [id^="tab-task-active"].tab-active {
-  border: none;
-  border-radius: 0;
-  height: 100%;
+  width: fit-content;
 }
 
 :root [id^="tab-task-passive"].tab-passive {
@@ -3728,6 +3698,7 @@ button.calendar-task-row {
   border-left: none;
   border-bottom: none;
   border-radius: 0;
+  min-width: unset;
 }
 :root .tab-passive:hover {
   background-color: var(--c-background-3);
@@ -3948,6 +3919,38 @@ button.calendar-task-row {
   background: var(--c-background-3) !important;
   border: none !important;
   border-image: none !important;
+  overflow: visible;
+  position: relative;
+  margin-top: 0;
+}
+
+.selection-toolbar-wrap {
+  overflow: visible;
+}
+
+.selection-toolbar-close {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 5px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: var(--c-background-3);
+  color: var(--c-text-1);
+  cursor: pointer;
+  line-height: 0;
+}
+
+.selection-toolbar-close svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 :root select,

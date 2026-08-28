@@ -342,12 +342,15 @@ html[data-resizing='context'] .primary-workspace-content[data-two-panel='true'] 
 /* Beat :root .tbar-btn--on / :root .tbar-btn:hover accent color. */
 :root .context-panel-toggle.tbar-btn--on,
 :root .context-panel-toggle.tbar-btn--on:hover,
-:root .context-panel-toggle.context-panel-toggle--on {
+:root .context-panel-toggle.context-panel-toggle--on,
+:root .assistant-toggle.tbar-btn--on,
+:root .assistant-toggle.tbar-btn--on:hover {
   color: var(--c-text-2);
   background: transparent !important;
 }
 
-:root .context-panel-toggle.tbar-btn:hover {
+:root .context-panel-toggle.tbar-btn:hover,
+:root .assistant-toggle.tbar-btn:hover {
   background: transparent !important;
 }
 

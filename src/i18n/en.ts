@@ -16,6 +16,7 @@ const en = {
   },
   editor: {
     addBlock: 'Add block',
+    closeToolbar: 'Close',
     image: 'Image',
     heading1: 'Heading 1',
     heading2: 'Heading 2',
@@ -95,6 +96,8 @@ const en = {
     manageProviders: 'Manage providers, API keys & models',
     appearance: 'Appearance',
     textSize: 'Text Size',
+    increaseTextSize: 'Increase text size',
+    decreaseTextSize: 'Decrease text size',
     fontFamily: 'Font Family',
     language: 'Language',
     defaultFolder: 'Default workspace folder',

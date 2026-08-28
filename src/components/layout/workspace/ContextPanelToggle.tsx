@@ -21,6 +21,8 @@ interface ContextPanelToggleProps {
   /** Icon size in px. Defaults to 12 for toolbars, 16 for the header. */
   iconSize?: number;
   variant?: 'toolbar' | 'header';
+  /** Override the default `context-panel-toggle-${mode}` id when the control is duplicated. */
+  id?: string;
 }
 
 /**
@@ -31,6 +33,7 @@ export function ContextPanelToggle({
   available: availableProp,
   iconSize,
   variant = 'toolbar',
+  id: idProp,
 }: ContextPanelToggleProps) {
   const activeMode = useUIStore(selectActiveWorkspaceMode);
   const availableFromStore = useUIStore(selectIsContextPanelAvailable);
@@ -56,7 +59,7 @@ export function ContextPanelToggle({
 
   return (
     <button
-      id={`context-panel-toggle-${mode}`}
+      id={idProp ?? `context-panel-toggle-${mode}`}
       type="button"
       className={className}
       onMouseDown={variant === 'header' ? (event) => event.stopPropagation() : undefined}

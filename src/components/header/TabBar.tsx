@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
 import { WorkspaceTab } from './WorkspaceTab';
+import { isTabRowOverflowing } from './tabsOverflow';
 import { CRM_HEADER_TABS, SETTINGS_HEADER_TABS, TASK_HEADER_TABS } from './moduleNav';
 import type { CRMHeaderTab } from './moduleNav';
 import type { LucideIcon } from 'lucide-react';
@@ -94,12 +95,14 @@ export function TabBar() {
   const prevLeftsRef = useRef<Map<string, number>>(new Map());
   const skipFlipRef = useRef(true);
 
-  // Detect overflow to switch last tab to ellipsis mode
+  // Detect overflow against unconstrained tab widths so compact passives
+  // (max-width: 80px) do not immediately look like they fit again.
   useLayoutEffect(() => {
     const checkOverflow = () => {
       const el = tabsRowRef.current;
       if (!el) return;
-      setIsOverflowing(el.scrollWidth > el.clientWidth + 1);
+      const overflowing = isTabRowOverflowing(el);
+      setIsOverflowing((prev) => (prev === overflowing ? prev : overflowing));
     };
     checkOverflow();
     const ro = new ResizeObserver(checkOverflow);

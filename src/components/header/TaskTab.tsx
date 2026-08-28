@@ -25,7 +25,6 @@ export function TaskTab({ task, isActive, onSelect, onClose, charLimit }: TaskTa
         }
       }}
       className={`group relative justify-start min-w-0 pl-3 pr-1.5 ${isActive ? 'tab-active' : 'tab-passive'}`}
-      style={isActive ? { height: '100%' } : undefined}
     >
       <span className="txt-xs med trunc">{title}</span>
 

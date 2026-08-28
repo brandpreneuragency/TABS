@@ -7,4 +7,5 @@ export { CenterContentPanel } from './CenterContentPanel';
 export { AssistantWrapper } from './AssistantWrapper';
 export { MainResizeHandle } from './MainResizeHandle';
 export { ContextPanelToggle } from './ContextPanelToggle';
+export { AssistantToggle } from './AssistantToggle';
 export type { WorkspaceModeLayout, WorkspaceShellLayoutKind, WorkspaceShellRefs } from './types';

@@ -5,6 +5,7 @@ import { useUIStore } from '../../stores/uiStore';
 import { THEME_TOKEN_CATEGORIES, THEME_FONT_OPTIONS, type TokenCategory, type TokenDescriptor } from './themeTokenCatalog';
 import { SettingsContent } from './GeneralSettingsContent';
 import { SettingsPanels } from './SettingsPanels';
+import { EDITOR_FONT_SIZES } from '../../stores/editorFontSize';
 
 const GENERAL_CATEGORY_ID = 'general';
 
@@ -53,7 +54,7 @@ export function AppearanceSection() {
                 </select>
               </div>
               <div className="settings-scope-toggle">
-                {([12, 14, 16] as const).map((sz) => (
+                {EDITOR_FONT_SIZES.map((sz) => (
                   <button key={sz} className={editorFontSize === sz ? 'is-active' : ''} onClick={() => setEditorFontSize(sz)}>{sz}px</button>
                 ))}
               </div>

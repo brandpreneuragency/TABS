@@ -2,12 +2,12 @@ import { useState, useEffect, useRef, useCallback, type RefObject } from 'react'
 import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/react';
 import {
-  Bold, Italic, Underline, Strikethrough, Link,
+  Bold, Italic, Underline, Strikethrough, Link, X,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, RemoveFormatting,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { INLINE_TEXT_PRESETS, type InlineTextPresetName } from './InlineTextPreset';
-import { useUIStore } from '../../stores/uiStore';
 
 interface SelectionToolbarProps {
   editor: Editor | null;
@@ -62,7 +62,7 @@ function StyleBtn({
 }
 
 export function SelectionToolbar({ editor, editorScrollRef }: SelectionToolbarProps) {
-  const { selectedText } = useUIStore();
+  const { t } = useTranslation();
   const [pos, setPos] = useState<Pos | null>(null);
   const [savedRange, setSavedRange] = useState<{ from: number; to: number } | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -70,25 +70,25 @@ export function SelectionToolbar({ editor, editorScrollRef }: SelectionToolbarPr
   const [href, setHref] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const outsideClickClosed = useRef(false);
 
-  const visible = selectedText !== null && pos !== null;
+  const visible = pos !== null;
 
-  // Close toolbar when clicking outside
+  // Close toolbar when clicking outside the editor and the toolbar itself.
+  // Clicks inside the editor are handled on mouseup so a left click can
+  // open or reposition the toolbar instead of requiring a double-click.
   useEffect(() => {
     if (!visible) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        outsideClickClosed.current = true;
-        setPos(null);
-        setSavedRange(null);
-        setLinkOpen(false);
-        setColorOpen(false);
-      }
+      const target = e.target as Node;
+      if (toolbarRef.current?.contains(target)) return;
+      if (editorScrollRef.current?.contains(target)) return;
+      setPos(null);
+      setSavedRange(null);
+      setLinkOpen(false);
+      setColorOpen(false);
     };
 
-    // Use setTimeout to avoid closing immediately when the toolbar opens from a click
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
     }, 0);
@@ -97,28 +97,21 @@ export function SelectionToolbar({ editor, editorScrollRef }: SelectionToolbarPr
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [visible]);
+  }, [visible, editorScrollRef]);
   const activeTextPreset = (editor?.getAttributes('textStyle').textPreset ?? null) as InlineTextPresetName | null;
 
   const handleMouseUp = useCallback((e: MouseEvent) => {
     if (e.button !== 0) return;
-    if (!editorScrollRef.current?.contains(e.target as Node)) return;
+    if (!editor?.isEditable) return;
 
-    // Don't re-open if toolbar was just closed by an outside click
-    if (outsideClickClosed.current) {
-      outsideClickClosed.current = false;
-      return;
-    }
+    const target = e.target as HTMLElement;
+    if (!editorScrollRef.current?.contains(target)) return;
+    if (toolbarRef.current?.contains(target)) return;
+    if (target.closest('textarea, input, button, a, [role="menu"], .block-insert-overlay')) return;
 
-    const { from, to } = editor?.state.selection || {};
-    if (from === undefined || to === undefined || from === to) {
-      setLinkOpen(false);
-      setColorOpen(false);
-      setPos(null);
-      setSavedRange(null);
-      return;
-    }
-
+    const { from, to } = editor.state.selection;
+    setLinkOpen(false);
+    setColorOpen(false);
     setPos({ x: e.clientX, y: e.clientY });
     setSavedRange({ from, to });
   }, [editorScrollRef, editor]);
@@ -252,21 +245,42 @@ export function SelectionToolbar({ editor, editorScrollRef }: SelectionToolbarPr
   const alignLabel = ALIGN_LABELS[alignIndex];
   const currentColor = (editor?.getAttributes('textStyle').color ?? null) as string | null;
 
+  const closeToolbar = () => {
+    setPos(null);
+    setSavedRange(null);
+    setLinkOpen(false);
+    setColorOpen(false);
+  };
+
   return createPortal(
     <div
       ref={toolbarRef}
-      className="drop selection-toolbar"
+      className="selection-toolbar-wrap"
       style={{
         position: 'fixed',
         top: pos.y + 30,
         left: clampedLeft,
         zIndex: 200,
-        padding: 8,
-        marginTop: 5,
-        borderRadius: 8,
       }}
       onMouseDown={(e) => e.preventDefault()}
     >
+      <button
+        type="button"
+        className="selection-toolbar-close"
+        title={t('editor.closeToolbar')}
+        aria-label={t('editor.closeToolbar')}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={closeToolbar}
+      >
+        <X size={14} strokeWidth={2} />
+      </button>
+      <div
+        className="drop selection-toolbar"
+        style={{
+          padding: 8,
+          borderRadius: 8,
+        }}
+      >
       {/* Row 1: Link, Bold, Italic, Underline, Strikethrough, Bullet list, Number list */}
       <div className="row-xs" style={{ padding: '4px 6px' }}>
         <ToolBtn
@@ -452,6 +466,7 @@ export function SelectionToolbar({ editor, editorScrollRef }: SelectionToolbarPr
           </button>
         </div>
       )}
+      </div>
     </div>,
     document.body
   );

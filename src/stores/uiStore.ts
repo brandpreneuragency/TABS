@@ -21,6 +21,11 @@ import {
   type ContextPanelOpenByMode,
   type WorkspaceMode,
 } from './uiLayoutState';
+import {
+  DEFAULT_EDITOR_FONT_SIZE,
+  parseEditorFontSize,
+  type EditorFontSize,
+} from './editorFontSize';
 
 export type { ContextPanelOpenByMode, WorkspaceMode } from './uiLayoutState';
 
@@ -94,7 +99,7 @@ interface UIStore {
   expandedPaths: string[];
   selectedTreePath: string | null;
   editorFontFamily: string;
-  editorFontSize: 12 | 14 | 16;
+  editorFontSize: EditorFontSize;
   language: 'en' | 'tr';
 
   taskMode: boolean;
@@ -158,7 +163,7 @@ interface UIStore {
   toggleRainbowMode: () => void;
   setSettingsPanelOpen: (v: boolean) => void;
   setEditorFontFamily: (font: string) => void;
-  setEditorFontSize: (size: 12 | 14 | 16) => void;
+  setEditorFontSize: (size: EditorFontSize) => void;
   setLanguage: (lang: 'en' | 'tr') => void;
   toggleExpandedPath: (path: string) => void;
   setExpandedPaths: (paths: string[]) => void;
@@ -300,7 +305,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
   expandedPaths: [],
   selectedTreePath: null,
   editorFontFamily: 'Inter',
-  editorFontSize: 12,
+  editorFontSize: DEFAULT_EDITOR_FONT_SIZE,
   language: 'en',
   taskMode: false,
   activeTaskId: null,
@@ -408,8 +413,9 @@ export const useUIStore = create<UIStore>((set, get) => ({
   },
 
   setEditorFontSize: (size) => {
-    set({ editorFontSize: size });
-    void db.settings.put({ key: 'editorFontSize', value: size });
+    const next = parseEditorFontSize(size);
+    set({ editorFontSize: next });
+    void db.settings.put({ key: 'editorFontSize', value: next });
   },
 
   setLanguage: (lang) => {
@@ -716,7 +722,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
       sidebarTab: (sidebarTab ? String(sidebarTab.value) : 'chat') as SidebarTab,
       expandedPaths: fileExplorerExpandedPaths ? JSON.parse(String(fileExplorerExpandedPaths.value)) : [],
       editorFontFamily: editorFontFamily ? String(editorFontFamily.value) : 'Inter',
-      editorFontSize: editorFontSize ? (Number(editorFontSize.value) as 12 | 14 | 16) : 12,
+      editorFontSize: parseEditorFontSize(editorFontSize?.value),
       language: lang,
       taskMode: taskModeValue,
       activeTaskId: lastActiveTaskId ? String(lastActiveTaskId.value) : null,
