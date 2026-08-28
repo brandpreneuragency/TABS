@@ -47,7 +47,7 @@ interface ActionsStore {
 }
 
 export const useActionsStore = create<ActionsStore>((set, get) => ({
-  scope: 'writer',
+  scope: 'general',
   actions: [],
   groups: [],
 

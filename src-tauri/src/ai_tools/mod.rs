@@ -1,10 +1,12 @@
-//! AI tool surface (Claude Code-parity) exposed to the AI sidebar.
+//! Legacy AI command surface exposed to the AI sidebar.
 //!
-//! All commands are workspace-root sandboxed via [`sandbox::resolve_in_workspace`],
-//! which is enforced in Rust (not the frontend) so a compromised frontend cannot
-//! escape the workspace.
+//! Registered commands resolve opaque process-local scope IDs through
+//! [`crate::agent_tools::scope::WorkspaceScopeRegistry`]. They never accept a
+//! model-supplied workspace root. `sandbox` remains only for its legacy tests.
 
+pub mod cancel;
 pub mod fs_ops;
+pub mod git;
 pub mod sandbox;
 pub mod search;
 pub mod shell;

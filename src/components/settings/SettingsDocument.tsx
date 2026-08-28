@@ -1,7 +1,6 @@
 import { useUIStore } from '../../stores/uiStore';
 import { ActionsSection } from './ActionsSection';
 import { AppearanceSection } from './AppearanceSection';
-import { AgentsSection } from './AgentsSection';
 import { ToolsSection } from './ToolsSection';
 import './settings.css';
 
@@ -19,9 +18,6 @@ export function SettingsDocument() {
         )}
         {activeSettingsSubTab === 'appearance' && (
           <AppearanceSection />
-        )}
-        {activeSettingsSubTab === 'agents' && (
-          <AgentsSection />
         )}
       </div>
     </div>

@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+pub mod agent_tools;
 pub mod ai_tools;
 mod commands;
 mod terminal;
@@ -103,6 +104,9 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(terminal::TerminalRegistry::new())
+        .manage(agent_tools::scope::WorkspaceScopeRegistry::new())
+        .manage(ai_tools::cancel::ToolCancelRegistry::new())
+        .manage(commands::lifecycle::LifecycleGate::new())
         .manage(PendingOpenFile(Mutex::new(None)))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
@@ -118,6 +122,17 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             test_notification,
             take_pending_open_file,
+            commands::lifecycle::request_restart,
+            commands::lifecycle::prepare_shutdown,
+            commands::lifecycle::prepare_for_restart,
+            commands::lifecycle::complete_shutdown,
+            commands::lifecycle::install_update,
+            commands::lifecycle::cancel_update,
+            commands::lifecycle::notify_run_event,
+            agent_tools::scope::agent_scope_register,
+            agent_tools::scope::agent_scope_reregister,
+            agent_tools::scope::agent_scope_revoke,
+            agent_tools::task_projection::task_projection_apply,
             commands::secrets::secret_get,
             commands::secrets::secret_set,
             commands::secrets::secret_delete,
@@ -130,10 +145,14 @@ pub fn run() {
             commands::terminal::home_dir,
             commands::ai_tools::shell::ai_shell_exec,
             commands::ai_tools::fs_ops::ai_file_read,
+            commands::ai_tools::fs_ops::ai_file_text,
             commands::ai_tools::fs_ops::ai_file_write,
             commands::ai_tools::fs_ops::ai_file_edit,
             commands::ai_tools::search::ai_glob,
-            commands::ai_tools::search::ai_grep
+            commands::ai_tools::search::ai_grep,
+            commands::ai_tools::git::ai_git_status,
+            commands::ai_tools::git::ai_git_diff,
+            commands::ai_tools::cancel::ai_tool_cancel
         ])
         .setup(|app| {
             // Intercept the main window's close button: instead of quitting

@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { Editor } from '@tiptap/react';
 import { AppLayout } from './components/layout/AppLayout';
 import { AppTitlebar } from './components/header/AppTitlebar';
 import { Header } from './components/header/Header';
@@ -7,10 +6,9 @@ import { SubtasksToggleBar } from './components/header/SubtasksToggleBar';
 import { EditorWorkspace } from './components/editor/EditorWorkspace';
 import { TaskDetailPanel } from './components/taskManager/TaskDetailPanel';
 import { TaskProjectsKanban } from './components/taskManager/TaskProjectsKanban';
-import { AISidebar } from './components/sidebar/AISidebar';
+import { AgentSidebarHost } from './components/agent/AgentSidebarHost';
 import { FileExplorerPanel } from './components/fileExplorer/FileExplorerPanel';
 import { TaskListPanel } from './components/taskManager/TaskListPanel';
-import { AgentEditor } from './components/modals/AgentEditor';
 import { QuickPrompts } from './components/modals/QuickPrompts';
 import { TrashModal } from './components/modals/TrashModal';
 import { ModelSwitcher } from './components/ui/ModelSwitcher';
@@ -18,11 +16,10 @@ import { ToastContainer } from './components/ui/Toast';
 import { CRMWorkspace } from './components/layout/CRMWorkspace';
 import { CRMListPanel } from './components/crm/CRMListPanel';
 import { FormsListPanel } from './components/forms/FormsListPanel';
-import { CRMAISidebar } from './components/sidebar/CRMAISidebar';
 import { useWorkspaceStore } from './stores/workspaceStore';
 import { useUIStore } from './stores/uiStore';
-import type { CRMPage, FormsPage } from './stores/uiStore';
 import { useAIStore } from './stores/aiStore';
+import { useAgentUiStore } from './stores/agentUiStore';
 import { useTaskStore } from './stores/taskStore';
 import { useProjectStore } from './stores/projectStore';
 import { useCrmStore } from './stores/crmStore';
@@ -30,34 +27,24 @@ import { useFormsStore } from './stores/formsStore';
 import { useThemeStore } from './stores/themeStore';
 import { runStartupUpdateCheck } from './services/updater';
 import { loadReasoningOverlay } from './services/ai/reasoning';
+import { taskProjectionWorker } from './services/tasks/taskProjectionWorker';
 
 export default function App() {
-  const [editor, setEditor] = useState<Editor | null>(null);
   const [trashOpen, setTrashOpen] = useState(false);
   const { loadWorkspaces, activeWorkspaceId, isLoaded: docsLoaded, setActiveWorkspace } = useWorkspaceStore();
   const {
     loadUISettings,
     taskMode,
-    activeTaskId,
     activeTaskPage,
     setTaskMode,
     crmMode,
     activeCRMPage,
-    activeFormsPage,
     activeView,
-    activeSettingsSubTab,
   } = useUIStore();
   const { loadAISettings } = useAIStore();
   const { loadThemeTokens } = useThemeStore();
-  const { loadTasks, isLoaded: tasksLoaded, activeTaskId: storeActiveTaskId, setActiveTask, tasks } = useTaskStore();
+  const { loadTasks, isLoaded: tasksLoaded, setActiveTask, tasks } = useTaskStore();
   const { loadProjects, isLoaded: projectsLoaded } = useProjectStore();
-
-  // CRM/Forms active selections drive the Panel 3 CRM AI sidebar context.
-  const activeLeadId = useCrmStore((s) => s.activeLeadId);
-  const activePipelineView = useCrmStore((s) => s.activePipelineView);
-  const activeFormId = useFormsStore((s) => s.activeFormId);
-  const activeSubmissionId = useFormsStore((s) => s.activeSubmissionId);
-  const activeFormStatus = useFormsStore((s) => s.forms.find((f) => f.id === s.activeFormId)?.status ?? null);
 
   const isLoaded = docsLoaded && tasksLoaded && projectsLoaded;
 
@@ -84,6 +71,12 @@ export default function App() {
     loadProjects,
     loadThemeTokens,
   ]);
+
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    void taskProjectionWorker.start();
+    return () => taskProjectionWorker.stop();
+  }, []);
 
   // Listen for "Open with TABS" / argv file events from the Tauri shell.
   // Wait until workspaces are loaded so cold-start open does not race Dexie
@@ -165,12 +158,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  const handleEditorReady = useCallback((e: Editor) => {
-    setEditor(e);
-  }, []);
-
   const handleQuickPromptSelect = useCallback((prompt: string) => {
-    sessionStorage.setItem('pendingPrompt', prompt);
+    useAgentUiStore.getState().setComposerGoal(prompt);
+    useAgentUiStore.getState().setViewMode('run');
     window.dispatchEvent(new CustomEvent('quickPromptSelected', { detail: prompt }));
   }, []);
 
@@ -189,8 +179,6 @@ export default function App() {
     );
   }
 
-  const effectiveTaskId = activeTaskId ?? storeActiveTaskId;
-
   // The Settings doc only lives in doc mode (not task/crm).
   const settingsActive = !taskMode && !crmMode && activeView === 'settings';
 
@@ -204,7 +192,7 @@ export default function App() {
       : <TaskDetailPanel />
     : settingsActive
     ? null
-    : <EditorWorkspace onEditorReady={handleEditorReady} />;
+    : <EditorWorkspace />;
 
   // Panel 1 (leftPanel) — CRM / Forms / file explorer.
   // Settings supplies its own list via SettingsPanels inside SettingsDocument.
@@ -217,37 +205,7 @@ export default function App() {
     ? null
     : <FileExplorerPanel />;
 
-  // Assistant content — CRM AI, Settings AI (scoped by sub-tab), or doc/task AI.
-  const crmContext = {
-    module: (formsPageActive ? 'forms' : 'crm') as 'crm' | 'forms',
-    page: (formsPageActive ? activeFormsPage : activeCRMPage) as CRMPage | FormsPage,
-    leadId: crmMode && activeCRMPage === 'leads' ? activeLeadId : null,
-    contactId: null,
-    companyId: null,
-    pipelineView: crmMode && activeCRMPage === 'pipeline' ? (activePipelineView as string) : null,
-    formId: formsPageActive && (activeFormsPage === 'builder' || activeFormsPage === 'list') ? activeFormId : null,
-    submissionId: formsPageActive && activeFormsPage === 'submissions' ? activeSubmissionId : null,
-    embedState: formsPageActive && (activeFormsPage === 'builder' || activeFormsPage === 'list') ? activeFormStatus : null,
-  };
-
-  const sidebar = crmMode
-    ? <CRMAISidebar crmContext={crmContext} />
-    : settingsActive
-    ? (
-      <AISidebar
-        workspaceId={null}
-        taskId={null}
-        settingsTab={activeSettingsSubTab}
-        editor={null}
-      />
-    )
-    : (
-      <AISidebar
-        workspaceId={taskMode ? '' : activeWorkspaceId}
-        taskId={taskMode ? effectiveTaskId ?? '' : ''}
-        editor={editor}
-      />
-    );
+  const sidebar = <AgentSidebarHost />;
 
   return (
     <>
@@ -270,7 +228,6 @@ export default function App() {
             taskListPanel={<TaskListPanel />}
             modals={
               <>
-                <AgentEditor />
                 <QuickPrompts onSelectPrompt={handleQuickPromptSelect} />
                 {trashOpen && <TrashModal onClose={() => setTrashOpen(false)} />}
                 <ModelSwitcher />

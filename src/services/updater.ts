@@ -19,6 +19,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { desktopLifecycleAdapter } from './agent/lifecycle/desktopLifecycleAdapter';
 import { useUIStore } from '../stores/uiStore';
 
 export interface UpdateCheckResult {
@@ -67,11 +68,16 @@ export async function checkForUpdate(
  * installer UI can take focus.
  */
 export async function applyUpdate(update: Update): Promise<void> {
-  // downloadAndInstall shows the native progress dialog when
-  // `dialog: true` is set in tauri.conf.json.
-  await update.downloadAndInstall();
-  // Relaunch into the freshly installed binary.
-  await relaunch();
+  // Plan 25.4: acquire the quiescing barrier before download installation.
+  const prepared = await desktopLifecycleAdapter.prepareForRestart();
+  try {
+    await desktopLifecycleAdapter.installUpdate(prepared.requestToken);
+    await update.downloadAndInstall();
+    await relaunch();
+  } catch (error) {
+    await desktopLifecycleAdapter.cancelUpdate(prepared.requestToken);
+    throw error;
+  }
 }
 
 /**

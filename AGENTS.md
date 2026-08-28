@@ -62,7 +62,7 @@ Do **not** reintroduce `server/`, `deploy/`, Hermes clients/stores, remote folde
 - Put shared state invariants in Zustand actions. Use narrow selectors in large components.
 - Follow existing Dexie patterns for persisted settings; migrate or delete obsolete keys deliberately (e.g. ignore/delete stale `chatMode`).
 
-Shell workspace modes are local only: Documents, Tasks, CRM (including Forms), Settings, plus Terminal. The AI Assistant sidebar’s `SidebarTab = 'chat'` is the local multi-provider assistant — not a Hermes workspace.
+Shell workspace modes are local only: Documents, Tasks, CRM (including Forms), Settings, plus Terminal. The assistant sidebar is the local Work-OS harness — not a chat-first agent loop.
 
 ## Implementation conventions
 

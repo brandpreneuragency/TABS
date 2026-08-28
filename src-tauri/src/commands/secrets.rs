@@ -39,7 +39,9 @@ pub fn secret_delete(account: String) -> Result<(), String> {
     }
 }
 
-#[cfg(test)]
+// This exercises Windows Credential Manager. Headless Linux CI does not have a
+// Secret Service session, so it cannot provide the same integration boundary.
+#[cfg(all(test, windows))]
 mod tests {
     use super::{secret_delete, secret_get, secret_set};
     use std::time::{SystemTime, UNIX_EPOCH};

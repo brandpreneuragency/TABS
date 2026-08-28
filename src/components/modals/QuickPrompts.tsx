@@ -24,7 +24,7 @@ export function QuickPrompts({ onSelectPrompt }: QuickPromptsProps) {
     if (activeModal === 'quickPrompts') {
       db.quickPrompts
         .where('scope')
-        .equals('writer')
+        .equals('general')
         .reverse()
         .sortBy('createdAt')
         .then(setPrompts);
@@ -39,7 +39,7 @@ export function QuickPrompts({ onSelectPrompt }: QuickPromptsProps) {
       id: shortId(),
       title: newTitle.trim(),
       prompt: newPrompt.trim(),
-      scope: 'writer',
+      scope: 'general',
       createdAt: Date.now(),
     };
     await db.quickPrompts.put(qp);

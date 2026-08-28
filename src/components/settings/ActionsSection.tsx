@@ -9,9 +9,9 @@ interface DropTarget { groupId: string | null; index: number }
 interface ContextMenu { x: number; y: number; actionId: string }
 
 export function ActionsSection() {
-  const { scope, actions, groups, setScope, reload, saveAction, deleteAction, createGroup, renameGroup, deleteGroup, moveAction, reorderActions } = useActionsStore();
+  const { actions, groups, reload, saveAction, deleteAction, createGroup, renameGroup, deleteGroup, moveAction, reorderActions } = useActionsStore();
 
-  useEffect(() => { void reload(); }, [reload, scope]);
+  useEffect(() => { void reload(); }, [reload]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -77,18 +77,6 @@ export function ActionsSection() {
 
   const leftMain = (
     <div className="settings-list-body">
-      <div className="settings-scope-toggle" style={{ marginBottom: 8 }}>
-        {([
-          { id: 'writer', label: 'Writer' },
-          { id: 'task', label: 'Task' },
-          { id: 'crm', label: 'CRM' },
-        ] as const).map((s) => (
-          <button key={s.id} className={scope === s.id ? 'is-active' : ''} onClick={() => setScope(s.id)}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-
       <button className="settings-add-btn" onClick={handleNewAction}><Plus size={14} /> New action</button>
 
       {groups.map((g) => {

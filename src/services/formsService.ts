@@ -23,6 +23,12 @@ import type {
   FormStatus,
   WebhookConfig,
 } from '../types/forms';
+import type { AgentOperationReceipt } from '../types/agent';
+import { emitDomainChange } from './domainEvents';
+import { validateForm } from './formValidation';
+
+export { validateForm } from './formValidation';
+export type { FormValidationIssue, FormValidationResult } from './formValidation';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -80,7 +86,67 @@ export function blankForm(name = 'Untitled Form'): LeadForm {
 export async function createForm(name?: string): Promise<LeadForm> {
   const form = blankForm(name);
   await crmFormsDb.forms.add(form);
+  emitDomainChange({ domain: 'forms', entityType: 'form', entityId: form.id, operation: 'created', revision: form.updatedAt });
   return form;
+}
+
+export interface FormMutationOperation {
+  operationId: string;
+  effectFingerprint: string;
+}
+
+export class FormRevisionConflictError extends Error {
+  readonly formId: string;
+  readonly expectedUpdatedAt: string;
+  readonly actualUpdatedAt: string;
+  constructor(formId: string, expectedUpdatedAt: string, actualUpdatedAt: string) {
+    super(`Form ${formId} changed since ${expectedUpdatedAt}; current revision is ${actualUpdatedAt}.`);
+    this.name = 'FormRevisionConflictError';
+    this.formId = formId;
+    this.expectedUpdatedAt = expectedUpdatedAt;
+    this.actualUpdatedAt = actualUpdatedAt;
+  }
+}
+
+export async function updateFormCommand(
+  operation: FormMutationOperation,
+  id: string,
+  expectedUpdatedAt: string,
+  updates: Partial<LeadForm>,
+): Promise<{ form: LeadForm; receipt: AgentOperationReceipt; replayed: boolean }> {
+  if (!operation.operationId.trim() || !operation.effectFingerprint.trim()) throw new Error('Operation identity is required.');
+  const prior = await crmFormsDb.agentOperationReceipts.where('operationId').equals(operation.operationId).first();
+  if (prior) {
+    if (prior.effectFingerprint !== operation.effectFingerprint) throw new Error('Operation replay effect mismatch.');
+    const form = (prior.resultData as { form: LeadForm }).form;
+    return { form, receipt: prior, replayed: true };
+  }
+  const result = await crmFormsDb.transaction('rw', crmFormsDb.forms, crmFormsDb.agentOperationReceipts, async () => {
+    const raced = await crmFormsDb.agentOperationReceipts.where('operationId').equals(operation.operationId).first();
+    if (raced) return { form: (raced.resultData as { form: LeadForm }).form, receipt: raced, replayed: true };
+    const existing = await crmFormsDb.forms.get(id);
+    if (!existing) throw new Error(`Form ${id} was not found.`);
+    if (existing.updatedAt !== expectedUpdatedAt) throw new FormRevisionConflictError(id, expectedUpdatedAt, existing.updatedAt);
+    const next: LeadForm = { ...existing, ...updates, id, updatedAt: new Date(Math.max(Date.now(), Date.parse(existing.updatedAt) + 1)).toISOString() };
+    const validation = validateForm(next);
+    if (!validation.valid) throw new Error(`Invalid form: ${validation.issues.map((issue) => issue.message).join(' ')}`);
+    const receipt: AgentOperationReceipt = {
+      id: `crm-forms-receipt:${operation.operationId}`,
+      operationId: operation.operationId,
+      effectFingerprint: operation.effectFingerprint,
+      domain: 'forms',
+      resourceKeys: [`form:${id}`],
+      status: 'committed',
+      resultSummary: 'form updated',
+      resultData: { form: next },
+      committedAt: Date.now(),
+    };
+    await crmFormsDb.forms.put(next);
+    await crmFormsDb.agentOperationReceipts.add(receipt);
+    return { form: next, receipt, replayed: false };
+  });
+  if (!result.replayed) emitDomainChange({ domain: 'forms', entityType: 'form', entityId: id, operation: 'updated', revision: result.form.updatedAt, operationId: operation.operationId });
+  return result;
 }
 
 export async function updateForm(
@@ -89,9 +155,13 @@ export async function updateForm(
 ): Promise<LeadForm | undefined> {
   const existing = await crmFormsDb.forms.get(id);
   if (!existing) return undefined;
-  const next: LeadForm = { ...existing, ...updates, id, updatedAt: nowIso() };
-  await crmFormsDb.forms.put(next);
-  return next;
+  const result = await updateFormCommand(
+    { operationId: `ui:form:update:${nanoid(12)}`, effectFingerprint: JSON.stringify(updates) },
+    id,
+    existing.updatedAt,
+    updates,
+  );
+  return result.form;
 }
 
 export async function deleteForm(id: string): Promise<void> {

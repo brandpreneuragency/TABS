@@ -4,10 +4,8 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type { Task, TaskStatus } from '../types';
-import { TASK_TITLE_MAX_LENGTH } from '../types';
 import { db } from '../services/db';
-import * as fsAdapter from '../services/fs-adapter';
-import { isTauriRuntime } from '../services/runtime';
+import { localTaskOperation, taskService } from '../services/tasks/taskService';
 import { useUIStore } from './uiStore';
 
 function showError(err: unknown, fallback: string): void {
@@ -61,66 +59,6 @@ interface TaskStore {
   regenerateIndex: () => Promise<void>;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-// Helper to sync task to markdown file
-async function syncTaskToFile(task: Task): Promise<void> {
-  if (!isTauriRuntime() || !task.projectId) return;
-  
-  const project = await db.projects.get(task.projectId);
-  if (!project) return;
-  
-  const projectName = project.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_'); // eslint-disable-line no-control-regex -- Sanitize for filesystem
-  const taskDir = `TASKS/${projectName}/${task.id}`;
-  
-  try {
-    await fsAdapter.mkdir(taskDir, true);
-    const taskContent = `# ${task.title}\n\n${task.content}`;
-    await fsAdapter.writeTextFile(`${taskDir}/task.md`, taskContent);
-  } catch (err) {
-    console.warn('[taskStore] Failed to sync task to file:', err);
-  }
-}
-
-// Helper to delete task markdown file
-async function deleteTaskFile(task: Task): Promise<void> {
-  if (!isTauriRuntime() || !task.projectId) return;
-  
-  const project = await db.projects.get(task.projectId);
-  if (!project) return;
-  
-  const projectName = project.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_'); // eslint-disable-line no-control-regex -- Sanitize for filesystem
-  const taskDir = `TASKS/${projectName}/${task.id}`;
-  
-  try {
-    await fsAdapter.remove(taskDir, true);
-  } catch (err) {
-    console.warn('[taskStore] Failed to delete task file:', err);
-  }
-}
-
-// Helper to regenerate INDEX.md for a project
-async function regenerateProjectIndex(projectId: string): Promise<void> {
-  if (!isTauriRuntime()) return;
-  const project = await db.projects.get(projectId);
-  if (!project) return;
-  
-  const projectName = project.name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_'); // eslint-disable-line no-control-regex -- Sanitize for filesystem
-  const projectDir = `TASKS/${projectName}`;
-  
-  try {
-    await fsAdapter.mkdir(projectDir, true);
-    const tasks = await db.tasks.where('projectId').equals(projectId).filter(t => !t.deletedAt).toArray();
-    const taskList = tasks.map(t => `- [${t.id}] ${t.title}`).join('\n');
-    const indexContent = `# ${project.name} Tasks\n\n${taskList}`;
-    await fsAdapter.writeTextFile(`${projectDir}/INDEX.md`, indexContent);
-  } catch (err) {
-    console.warn('[taskStore] Failed to regenerate project index:', err);
-  }
-}
-
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   activeTaskId: null,
@@ -163,30 +101,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   createTask: async (title, opts = {}) => {
-    const trimmed = title.trim().slice(0, TASK_TITLE_MAX_LENGTH);
-    if (!trimmed) return null;
-    const id = nanoid(8);
-    const now = Date.now();
-    const task: Task = {
-      id,
-      title: trimmed,
-      content: opts.content ?? '',
-      status: opts.status ?? 'pending',
-      importance: opts.importance ?? 'medium',
-      date: opts.date ?? todayIso(),
-      projectId: opts.projectId ?? null,
-      assignees: opts.assignees ?? [],
-      createdAt: now,
-      updatedAt: now,
-      sourcePath: opts.sourcePath ?? undefined,
-      order: get().tasks.length,
-      parentId: opts.parentId ?? undefined,
-      sourceChatMessageId: opts.sourceChatMessageId ?? undefined,
-    };
     try {
-      await db.tasks.add(task);
-      // Sync to markdown file
-      await syncTaskToFile(task);
+      const command = {
+        ...localTaskOperation('create'),
+        title,
+        content: opts.content,
+        status: opts.status,
+        importance: opts.importance,
+        date: opts.date,
+        projectId: opts.projectId,
+        assignees: opts.assignees,
+        sourcePath: opts.sourcePath,
+        sourceChatMessageId: opts.sourceChatMessageId,
+        order: get().tasks.length,
+      };
+      const result = opts.parentId
+        ? await taskService.createSubtask({ ...command, parentId: opts.parentId })
+        : await taskService.createTask(command);
+      const task = result.task;
       
       set((s) => {
         // Open new task in active tab if possible, else append new tab
@@ -220,29 +152,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   updateTask: async (id, updates) => {
     const previous = get().tasks.find((t) => t.id === id);
-    // Enforce max title length
-    const enforcedUpdates =
-      updates.title !== undefined
-        ? { ...updates, title: updates.title.slice(0, TASK_TITLE_MAX_LENGTH) }
-        : updates;
+    if (!previous) return;
     // Optimistic local update with an `updatedAt` tick so the UI shows the
     // new "last modified" immediately.
-    const optimisticPatch = { ...enforcedUpdates, updatedAt: Date.now() } as Task;
+    const optimisticPatch = { ...updates, updatedAt: Date.now() } as Task;
     set((s) => ({
       tasks: s.tasks.map((t) => (t.id === id ? { ...t, ...optimisticPatch } : t)),
     }));
     try {
-      await db.tasks.update(id, enforcedUpdates);
-      // Sync to markdown file if projectId or content changed
-      const updatedTask = await db.tasks.get(id);
-      if (updatedTask) {
-        await syncTaskToFile(updatedTask);
-        // Regenerate project index if projectId changed
-        if (enforcedUpdates.projectId !== undefined && enforcedUpdates.projectId !== previous?.projectId) {
-          if (previous?.projectId) await regenerateProjectIndex(previous.projectId);
-          if (enforcedUpdates.projectId) await regenerateProjectIndex(enforcedUpdates.projectId);
-        }
-      }
+      const result = await taskService.updateTask({
+        ...localTaskOperation('update'),
+        taskId: id,
+        expectedUpdatedAt: previous.updatedAt,
+        updates,
+      });
+      set((s) => ({ tasks: s.tasks.map((task) => task.id === id ? result.task : task) }));
     } catch (err) {
       if (previous) {
         set((s) => ({
@@ -255,6 +179,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   deleteTask: async (id) => {
     const previous = get().tasks;
+    const taskToDelete = previous.find((task) => task.id === id);
+    if (!taskToDelete) return;
     // Soft-delete locally: drop from the active list, pick a neighbour as
     // the new active task if necessary, close the tab. Matches the
     // previous Dexie behaviour.
@@ -273,14 +199,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     useUIStore.getState().setActiveTaskId(get().activeTaskId);
     try {
-      const taskToDelete = await db.tasks.get(id);
-      if (taskToDelete) {
-        await db.tasks.update(id, { deletedAt: Date.now() });
-        // Delete markdown file
-        await deleteTaskFile(taskToDelete);
-        // Regenerate project index
-        if (taskToDelete.projectId) await regenerateProjectIndex(taskToDelete.projectId);
-      }
+      await taskService.softDeleteTask({
+        ...localTaskOperation('soft-delete'),
+        taskId: id,
+        expectedUpdatedAt: taskToDelete.updatedAt,
+        reason: 'Deleted from task store',
+      });
     } catch (err) {
       set({ tasks: previous });
       showError(err, 'Failed to delete task.');
@@ -289,12 +213,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   restoreTask: async (id) => {
     try {
-      const task = await db.tasks.get(id);
-      if (task) {
-        await db.tasks.update(id, { deletedAt: undefined });
-        // Regenerate project index
-        if (task.projectId) await regenerateProjectIndex(task.projectId);
-      }
+      await taskService.restoreTask(id);
       // Re-fetch the active list so the restored task reappears with
       // the canonical server `order` and `updatedAt`.
       const tasks = await db.tasks.filter(t => !t.deletedAt).toArray();
@@ -339,14 +258,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       };
     });
     try {
-      const taskToDelete = await db.tasks.get(id);
-      if (taskToDelete) {
-        await db.tasks.delete(id);
-        // Delete markdown file
-        await deleteTaskFile(taskToDelete);
-        // Regenerate project index
-        if (taskToDelete.projectId) await regenerateProjectIndex(taskToDelete.projectId);
-      }
+      await taskService.permanentlyDeleteTask(id);
     } catch (err) {
       set({ tasks: previous });
       showError(err, 'Failed to permanently delete task.');
@@ -487,17 +399,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   getSubtasks: (parentId) => get().tasks.filter((t) => t.parentId === parentId && !t.deletedAt),
 
   reorderSubtasks: async (_parentId, orderedIds) => {
-    const now = Date.now();
-    const updates = orderedIds.map((id, index) => ({ id, order: index, updatedAt: now }));
-    // Optimistic local update.
-    set((s) => ({
-      tasks: s.tasks.map((t) => {
-        const u = updates.find((x) => x.id === t.id);
-        return u ? { ...t, order: u.order, updatedAt: u.updatedAt } : t;
-      }),
-    }));
     try {
-      await Promise.all(updates.map((u) => db.tasks.update(u.id, { order: u.order })));
+      const changed = await taskService.reorderSubtasks(orderedIds);
+      const changedById = new Map(changed.map((task) => [task.id, task]));
+      set((s) => ({ tasks: s.tasks.map((task) => changedById.get(task.id) ?? task) }));
     } catch (err) {
       showError(err, 'Failed to reorder subtasks.');
     }
@@ -529,28 +434,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       showError(new Error('Parent task not found'), 'Parent task not found');
       return null;
     }
-    const id = nanoid(8);
-    const now = Date.now();
-    const task: Task = {
-      id,
-      title: title.trim().slice(0, TASK_TITLE_MAX_LENGTH),
-      content: '',
-      status: 'in_progress',
-      importance: 'medium',
-      date: date ?? parent.date,
-      projectId: parent.projectId,
-      assignees: [],
-      createdAt: now,
-      updatedAt: now,
-      order: 0,
-      parentId,
-      sourceChatMessageId: sourceChatMessageId ?? undefined,
-    };
     try {
-      await db.tasks.add(task);
-      // Sync to markdown file
-      await syncTaskToFile(task);
-      
+      const { task } = await taskService.createSubtask({
+        ...localTaskOperation('create-subtask'),
+        parentId,
+        title,
+        date: date ?? parent.date,
+        projectId: parent.projectId,
+        sourceChatMessageId,
+      });
       set((s) => ({ tasks: [...s.tasks, task] }));
       return task;
     } catch (err) {
@@ -560,14 +452,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   regenerateIndex: async () => {
-    // Regenerate INDEX.md files for all projects
-    try {
-      const projects = await db.projects.toArray();
-      for (const project of projects) {
-        await regenerateProjectIndex(project.id);
-      }
-    } catch (err) {
-      console.warn('[taskStore] Failed to regenerate indexes:', err);
-    }
+    // Durable Markdown projection is introduced by the next harness phase.
   },
 }));

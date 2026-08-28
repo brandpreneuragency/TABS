@@ -17,14 +17,18 @@ import { useUIStore } from './uiStore';
 import { parseByExt } from '../services/fileFormat';
 import { parseDocx } from '../services/docxFormat';
 import { writeEditorContent } from '../services/writeEditorFile';
+import {
+  documentCommands,
+  relativePathFromRoot,
+  type DocumentSaveOutcome,
+} from '../services/documents/documentCommands';
+import { subscribeToDomainChanges } from '../services/domainEvents';
 import { isTextFile, isImageFile, isPdfFile, isDocxFile } from '../utils/fileType';
 import { bytesToDataUrl, decodeDataUrlBytes, decodeDataUrlText, mimeTypeFromPath } from '../utils/fileData';
 import {
   openFolderDialog,
   readDir,
-  readTextFile,
   readBinaryFile,
-  writeTextFile,
   mkdir,
   remove as fsRemove,
   rename as fsRename,
@@ -259,6 +263,80 @@ export function needsSaveAsDialog(path: string | null | undefined): boolean {
   return !(n.startsWith('/') || /^[A-Za-z]:\//.test(n));
 }
 
+function parseEditorJson(content: string): object {
+  try {
+    return JSON.parse(content) as object;
+  } catch {
+    return { type: 'doc', content: [] };
+  }
+}
+
+function pickPathForWorkspaceSave(ws: Workspace): Promise<string | null> {
+  if (!ws.currentFile) return Promise.resolve(null);
+  const base = ws.currentFile.name.replace(/\.[^.]+$/, '') || 'Untitled';
+  const filters = [
+    { name: 'Markdown File', extensions: ['md', 'markdown'] },
+    { name: 'Text File', extensions: ['txt'] },
+    { name: 'Word Document', extensions: ['docx'] },
+  ];
+  const suggestedName = `${base}.md`;
+  const activeFolder = getConnectedFolders(ws).find((f) => f.id === ws.activeFolderId);
+  const defaultDir = activeFolder?.rootNode?.fullPath;
+  return pickSaveTabsPath(
+    suggestedName,
+    filters,
+    defaultDir ? joinPath(defaultDir, suggestedName) : suggestedName,
+  );
+}
+
+function applySavedPath(workspaceId: string, prevPath: string, newPath: string): void {
+  const newName = newPath.split(/[/\\]/).pop() ?? 'Untitled';
+  if (prevPath !== newPath) {
+    const cached = editorStateCache.get(prevPath);
+    if (cached) {
+      editorStateCache.set(newPath, cached);
+      editorStateCache.delete(prevPath);
+    }
+  } else {
+    clearEditorStateCache(prevPath);
+  }
+  useWorkspaceStore.setState((s) => ({
+    workspaces: s.workspaces.map((w) =>
+      w.id === workspaceId && w.currentFile
+        ? {
+            ...w,
+            currentFile: { ...w.currentFile, path: newPath, name: newName, isDirty: false },
+            updatedAt: Date.now(),
+          }
+        : w,
+    ),
+  }));
+  const updated = useWorkspaceStore.getState().workspaces.find((w) => w.id === workspaceId);
+  if (updated) void persistWorkspace(updated);
+}
+
+async function persistOpenDocument(workspaceId: string, forceSaveAs: boolean): Promise<DocumentSaveOutcome | null> {
+  const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === workspaceId);
+  if (!ws?.currentFile) return null;
+  const editorJson = parseEditorJson(ws.currentFile.content);
+  const prevPath = ws.currentFile.path;
+  const outcome = await documentCommands.saveDocument({
+    workspaceId,
+    buffer: ws.currentFile,
+    forceSaveAs,
+    pickSavePath: () => pickPathForWorkspaceSave(ws),
+    writeFile: async (path) => writeEditorContent(path, editorJson),
+  });
+  if (outcome.status === 'saved') {
+    applySavedPath(workspaceId, prevPath, outcome.path);
+  }
+  return outcome;
+}
+
+function registerWorkspaceRoot(workspaceId: string, rootPath: string): void {
+  documentCommands.registerRoot(`workspace:${workspaceId}`, rootPath);
+}
+
 function evictEditorCacheIfNeeded() {
   if (editorStateCache.size <= EDITOR_CACHE_MAX) return;
   // Simple FIFO eviction: delete the first entry
@@ -449,6 +527,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
         const { folders, validRefs } = await rebuildAllFolders(refs);
         setConnectedFolders(ws.id, folders);
+        if (folders[0]) registerWorkspaceRoot(ws.id, folders[0].path);
         // Update refs if some folders were removed (path no longer exists)
         if (validRefs.length !== refs.length || migrated) {
           ws.connectedFolders = validRefs;
@@ -539,16 +618,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     } catch (err) {
       console.warn('[workspaceStore] failed to delete workspace:', err);
     }
-    // Cascade: delete associated chat threads and messages
-    try {
-      const threads = await db.chatThreads.where('workspaceId').equals(id).toArray();
-      for (const thread of threads) {
-        await db.chatMessages.where('threadId').equals(thread.id).delete();
-      }
-      await db.chatThreads.where('workspaceId').equals(id).delete();
-    } catch (err) {
-      console.warn('[workspaceStore] failed to delete associated chat:', err);
-    }
+    // Chat threads were dropped in Dexie version 14. Harness runs stay in agent tables.
 
     // Clean up folder tree cache and editor state cache
     folderTreeCache.delete(id);
@@ -713,12 +783,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           return false;
         }
       } else {
+        const switched = await documentCommands.switchDocument({
+          workspaceId,
+          nextPath: fullPath,
+          nextName: node.name,
+          skipDirtyCheck: opts?.skipPrompt ?? false,
+        });
+        if (switched.status === 'blocked') return false;
+        if (switched.status === 'error') {
+          toast(`Could not read file: ${node.name}`);
+          return false;
+        }
         const ext = node.name.split('.').pop()?.toLowerCase() ?? '';
-        const text = await readTextFile(fullPath);
         try {
-          json = parseByExt(text, ext);
+          json = parseByExt(switched.content, ext);
         } catch {
-          json = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] };
+          json = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: switched.content }] }] };
         }
       }
 
@@ -749,92 +829,28 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const ws = get().workspaces.find((w) => w.id === workspaceId);
     if (!ws?.currentFile) return;
 
-    // No real disk path yet (draft / empty workspace / unconnected save):
-    // always open the native Save explorer so the user can pick a location.
-    if (needsSaveAsDialog(ws.currentFile.path)) {
-      await get().saveAsCurrentFile(workspaceId);
-      return;
-    }
-
-    const editorJson = (() => {
-      try { return JSON.parse(ws.currentFile.content) as object; } catch { return { type: 'doc', content: [] }; }
-    })();
-
-    try {
-      await writeEditorContent(ws.currentFile.path, editorJson);
-      // Mark as clean
-      set((s) => ({
-        workspaces: s.workspaces.map((w) =>
-          w.id === workspaceId && w.currentFile
-            ? { ...w, currentFile: { ...w.currentFile, isDirty: false }, updatedAt: Date.now() }
-            : w
-        ),
-      }));
-      // Clear editor state cache (content is now on disk)
-      clearEditorStateCache(ws.currentFile.path);
-      const updated = get().workspaces.find((w) => w.id === workspaceId);
-      if (updated) void persistWorkspace(updated);
-    } catch (err) {
-      console.warn('[Save] disk write failed:', err);
-      // Fall back to Save As (e.g. path gone) so content is not stuck.
-      try {
-        await get().saveAsCurrentFile(workspaceId);
-      } catch {
-        toast(`Failed to save: ${getErrorMessage(err)}`);
+    const forceSaveAs = needsSaveAsDialog(ws.currentFile.path);
+    const outcome = await persistOpenDocument(workspaceId, forceSaveAs);
+    if (!outcome) return;
+    if (outcome.status === 'cancelled') return;
+    if (outcome.status === 'conflict' || outcome.status === 'error') {
+      if (!forceSaveAs) {
+        const retry = await persistOpenDocument(workspaceId, true);
+        if (retry && retry.status !== 'saved' && retry.status !== 'cancelled') {
+          toast(retry.status === 'error' ? `Failed to save: ${retry.message}` : 'Failed to save: file changed on disk.');
+        }
+        return;
       }
+      toast(outcome.status === 'error' ? `Failed to save: ${outcome.message}` : 'Failed to save: file changed on disk.');
     }
   },
 
   saveAsCurrentFile: async (workspaceId) => {
     const ws = get().workspaces.find((w) => w.id === workspaceId);
     if (!ws?.currentFile) return;
-
-    const editorJson = (() => {
-      try { return JSON.parse(ws.currentFile.content) as object; } catch { return { type: 'doc', content: [] }; }
-    })();
-
-    const base = ws.currentFile.name.replace(/\.[^.]+$/, '') || 'Untitled';
-    const filters = [
-      { name: 'Markdown File', extensions: ['md', 'markdown'] },
-      { name: 'Text File', extensions: ['txt'] },
-      { name: 'Word Document', extensions: ['docx'] },
-    ];
-    const suggestedName = `${base}.md`;
-    // Prefer the connected folder when present; still works with none —
-    // the native dialog opens with just the suggested file name.
-    const activeFolder = getConnectedFolders(ws).find((f) => f.id === ws.activeFolderId);
-    const defaultDir = activeFolder?.rootNode?.fullPath;
-    try {
-      const newPath = await pickSaveTabsPath(
-        suggestedName,
-        filters,
-        defaultDir ? joinPath(defaultDir, suggestedName) : suggestedName
-      );
-      if (!newPath) return; // user cancelled
-      await writeEditorContent(newPath, editorJson);
-      const newName = newPath.split(/[/\\]/).pop() ?? ws.currentFile.name;
-      const prevPath = ws.currentFile.path;
-      // Keep undo/selection when promoting a draft path to a real file path.
-      if (prevPath !== newPath) {
-        const cached = editorStateCache.get(prevPath);
-        if (cached) {
-          editorStateCache.set(newPath, cached);
-          editorStateCache.delete(prevPath);
-        }
-      }
-      set((s) => ({
-        workspaces: s.workspaces.map((w) =>
-          w.id === workspaceId && w.currentFile
-            ? { ...w, currentFile: { ...w.currentFile, path: newPath, name: newName, isDirty: false }, updatedAt: Date.now() }
-            : w
-        ),
-      }));
-      const updated = get().workspaces.find((w) => w.id === workspaceId);
-      if (updated) void persistWorkspace(updated);
-    } catch (err) {
-      console.warn('[SaveAs] failed:', err);
-      toast(`Failed to save: ${getErrorMessage(err)}`);
-    }
+    const outcome = await persistOpenDocument(workspaceId, true);
+    if (!outcome || outcome.status === 'saved' || outcome.status === 'cancelled') return;
+    toast(outcome.status === 'error' ? `Failed to save: ${outcome.message}` : 'Failed to save: file changed on disk.');
   },
 
   updateFileContent: (workspaceId, content, isDirty) => {
@@ -1010,6 +1026,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       };
 
       get().updateWorkspace(workspaceId, updates);
+      registerWorkspaceRoot(workspaceId, resolvedPath);
       set({ loading: false, error: null });
       return newFolder;
     } catch (err) {
@@ -1129,8 +1146,33 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (err) { toast(err); return; }
     const trimmed = name.trim();
     const newPath = joinPath(parentFullPath, trimmed);
+    registerWorkspaceRoot(workspaceId, activeFolder.path);
+    let relativePath: string;
     try {
-      await writeTextFile(newPath, '');
+      relativePath = relativePathFromRoot(activeFolder.path, newPath);
+    } catch (e) {
+      toast(getErrorMessage(e));
+      return;
+    }
+    try {
+      const expectedWorkspaceRevision = await documentCommands.currentWorkspaceRevision(workspaceId);
+      const created = await documentCommands.createDocument({
+        workspaceId,
+        title: trimmed,
+        content: '',
+        expectedWorkspaceRevision,
+        target: {
+          kind: 'file',
+          scopeId: `workspace:${workspaceId}`,
+          relativePath,
+          expectedState: 'absent',
+        },
+      });
+      if (created.ok === false) {
+        const message = created.reason === 'path_collision' ? `"${trimmed}" already exists.` : 'Could not create file.';
+        toast(message);
+        return;
+      }
     } catch (e) {
       toast(getErrorMessage(e));
       return;
@@ -1346,3 +1388,46 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return ws?.activeFolderId ?? null;
   },
 }));
+
+documentCommands.setWorkspaceAccess({
+  getOpenBuffer: (workspaceId) => {
+    const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === workspaceId);
+    return ws?.currentFile ?? null;
+  },
+  getWorkspaceRoot: (workspaceId) => {
+    const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === workspaceId);
+    if (!ws) return null;
+    return getConnectedFolders(ws)[0]?.path ?? null;
+  },
+});
+
+subscribeToDomainChanges((event) => {
+  if (event.domain !== 'documents') return;
+  const snap = documentCommands.getDocumentSnapshot(event.entityId);
+  if (!snap) return;
+  const ws = useWorkspaceStore.getState().workspaces.find((w) => w.id === snap.workspaceId);
+  if (!ws) return;
+  const current = ws.currentFile;
+  const pathMatches = current != null && normalizePathSlashes(current.path) === normalizePathSlashes(snap.path);
+  const shouldOpenDraft = snap.kind === 'draft' && !current;
+  if (!pathMatches && !shouldOpenDraft) return;
+  if (current?.isDirty && !pathMatches) return;
+  useWorkspaceStore.setState((s) => ({
+    workspaces: s.workspaces.map((w) =>
+      w.id !== snap.workspaceId
+        ? w
+        : {
+            ...w,
+            currentFile: {
+              path: snap.path,
+              name: snap.title,
+              content: snap.content,
+              isDirty: snap.isDirty,
+            },
+            updatedAt: Date.now(),
+          },
+    ),
+  }));
+  const updated = useWorkspaceStore.getState().workspaces.find((w) => w.id === snap.workspaceId);
+  if (updated) void persistWorkspace(updated);
+});

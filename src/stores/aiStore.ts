@@ -3,9 +3,14 @@
 // API keys stored securely in Tauri keychain via secureStorage.ts.
 
 import { create } from 'zustand';
-import type { Agent, AIProviderConfig, ModelItem, ModelReasoning, ProviderStatus, SearchConfig, SearchProvider, TaskModelDefault, TaskModelDefaultKey } from '../types';
+import type { AIProviderConfig, ModelItem, ModelReasoning, ProviderStatus, SearchConfig, SearchProvider, TaskModelDefault, TaskModelDefaultKey } from '../types';
 import { db } from '../services/db';
 import { secureStorage } from '../services/secureStorage';
+import {
+  migrateHarnessCredentialsAndPreferences,
+  readSearchCredentials,
+  saveSearchCredentials,
+} from '../services/agent/credentialMigration';
 import {
   importProviderModels as fetchProviderModels,
   normalizeProviderBaseUrl,
@@ -20,26 +25,6 @@ import {
   isPresetProviderId,
 } from '../components/settings/modelProviders/providerPresets';
 import { useUIStore } from './uiStore';
-
-const DEFAULT_WRITER_AGENT: Agent = {
-  id: 'default_writer',
-  name: 'Aaron the Script Writer',
-  avatarUrl: '',
-  systemPrompt:
-    'You are Aaron, a skilled writing assistant. Help the user improve their writing, suggest edits, and provide creative ideas. When suggesting text changes, provide the revised text clearly so it can be applied directly.',
-  isDefault: true,
-  scope: 'writer',
-};
-
-const DEFAULT_TASK_AGENT: Agent = {
-  id: 'default_task',
-  name: 'Task Manager',
-  avatarUrl: '',
-  systemPrompt:
-    'You are a task management assistant. Produce practical, actionable outputs for task planning, summaries, subtasks, dependencies, and execution tracking.',
-  isDefault: true,
-  scope: 'task',
-};
 
 function defaultSearchConfig(): SearchConfig {
   return {
@@ -127,9 +112,6 @@ async function hasSecureKey(providerId: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 interface AIStore {
-  agents: Agent[];
-  activeAgentId: string;
-  activeTaskAgentId: string;
   providerConfigs: AIProviderConfig[];
   activeProviderId: string | null;
   appManagementProviderId: string | null;
@@ -138,11 +120,6 @@ interface AIStore {
   taskModelDefaults: TaskModelDefault[];
 
   loadAISettings: () => Promise<void>;
-  saveAgent: (agent: Agent) => Promise<void>;
-  deleteAgent: (id: string) => Promise<void>;
-  setActiveAgent: (id: string, scope?: 'writer' | 'task') => void;
-  getActiveAgent: (scope?: 'writer' | 'task') => Agent;
-  getAgentsByScope: (scope: 'writer' | 'task') => Agent[];
   getActiveProvider: () => AIProviderConfig | null;
   getAppManagementProvider: () => AIProviderConfig | null;
   setAppManagementProvider: (id: string | null) => Promise<void>;
@@ -199,14 +176,9 @@ interface AIStore {
 
   searchConfig: SearchConfig;
   saveSearchConfig: (config: SearchConfig) => Promise<void>;
-  systemInstructions: string;
-  saveSystemInstructions: (text: string) => Promise<void>;
 }
 
 export const useAIStore = create<AIStore>((set, get) => ({
-  agents: [DEFAULT_WRITER_AGENT, DEFAULT_TASK_AGENT],
-  activeAgentId: DEFAULT_WRITER_AGENT.id,
-  activeTaskAgentId: DEFAULT_TASK_AGENT.id,
   providerConfigs: [],
   activeProviderId: null,
   appManagementProviderId: null,
@@ -214,15 +186,10 @@ export const useAIStore = create<AIStore>((set, get) => ({
   hiddenModels: [],
   taskModelDefaults: [],
   searchConfig: defaultSearchConfig(),
-  systemInstructions: '',
 
   loadAISettings: async () => {
     try {
-      // Load agents from Dexie
-      const agentsFromDb = await db.agents.toArray();
-      const agents = agentsFromDb.length > 0
-        ? agentsFromDb
-        : [DEFAULT_WRITER_AGENT, DEFAULT_TASK_AGENT];
+      await migrateHarnessCredentialsAndPreferences();
 
       // Load provider configs from Dexie
       const providerConfigsFromDb = await db.providerConfigs.toArray();
@@ -298,9 +265,9 @@ export const useAIStore = create<AIStore>((set, get) => ({
       // Refresh connection status from secure storage
       await Promise.all(
         providerConfigs.map(async (config) => {
-          const hasKey = config.apiKey
+          const hasKey = config.isActive && (config.apiKey
             ? Boolean(config.apiKey)
-            : await hasSecureKey(config.id);
+            : await hasSecureKey(config.id));
           const modelCount = (config.models ?? []).filter(
             (m) => !hiddenModels.includes(`${config.id}:${m.id}`),
           ).length;
@@ -314,14 +281,6 @@ export const useAIStore = create<AIStore>((set, get) => ({
         })
       );
 
-      const activeWriterId =
-        (settings['activeAgentId'] as string | undefined) ??
-        agents.find((agent) => agent.scope === 'writer')?.id ??
-        DEFAULT_WRITER_AGENT.id;
-      const activeTaskId =
-        (settings['activeTaskAgentId'] as string | undefined) ??
-        agents.find((agent) => agent.scope === 'task')?.id ??
-        DEFAULT_TASK_AGENT.id;
       const activeProviderId =
         (settings['activeProviderId'] as string | undefined) ??
         providerConfigs.find((p) => p.status === 'connected')?.id ??
@@ -330,7 +289,8 @@ export const useAIStore = create<AIStore>((set, get) => ({
       const appManagementProviderId =
         (settings['appManagementProviderId'] as string | null | undefined) ?? null;
 
-      // Load task model defaults from settings
+      // Load task model defaults from settings. Version 14 deletes legacy
+      // modelDefaults; do not seed replacements from the old chat path.
       let taskModelDefaults: TaskModelDefault[] = [];
       const defaultsRaw = settings['modelDefaults'];
       if (typeof defaultsRaw === 'string' && defaultsRaw.length > 0) {
@@ -351,54 +311,20 @@ export const useAIStore = create<AIStore>((set, get) => ({
         }
       }
 
-      // Migration: if no defaults exist yet, seed from existing active provider settings
-      if (taskModelDefaults.length === 0) {
-        const migrated: TaskModelDefault[] = [];
-        if (activeProviderId) {
-          const activeConfig = providerConfigs.find((p) => p.id === activeProviderId);
-          if (activeConfig?.selectedModel) {
-            migrated.push({
-              taskKey: 'general_chat',
-              providerId: activeProviderId,
-              modelId: activeConfig.selectedModel,
-            });
-          }
-        }
-        if (appManagementProviderId && appManagementProviderId !== activeProviderId) {
-          const mgmtConfig = providerConfigs.find((p) => p.id === appManagementProviderId);
-          if (mgmtConfig?.selectedModel) {
-            migrated.push({
-              taskKey: 'app_management',
-              providerId: appManagementProviderId,
-              modelId: mgmtConfig.selectedModel,
-            });
-          }
-        }
-        if (migrated.length > 0) {
-          taskModelDefaults = migrated;
-          await db.settings.put({ key: 'modelDefaults', value: JSON.stringify(migrated) }).catch(() => undefined);
-        }
-      }
+      const searchCredentials = await readSearchCredentials();
 
       set({
-        agents,
         providerConfigs,
-        activeAgentId: activeWriterId,
-        activeTaskAgentId: activeTaskId,
         activeProviderId,
         appManagementProviderId,
         isLoaded: true,
         hiddenModels,
         taskModelDefaults,
         searchConfig: {
-          exaKey: String(settings['exaKey'] ?? ''),
-          tavilyKey: String(settings['tavilyKey'] ?? ''),
-          firecrawlKey: String(settings['firecrawlKey'] ?? ''),
-          braveKey: String(settings['braveKey'] ?? ''),
+          ...searchCredentials,
           enabled: Boolean(settings['enabled'] ?? false),
           searchProvider: (settings['searchProvider'] as SearchProvider) ?? 'tavily',
         },
-        systemInstructions: String(settings['systemInstructions'] ?? ''),
       });
     } catch (err) {
       set({ isLoaded: true });
@@ -406,78 +332,18 @@ export const useAIStore = create<AIStore>((set, get) => ({
     }
   },
 
-  saveAgent: async (agent) => {
-    const normalized: Agent = {
-      ...agent,
-      scope: agent.scope === 'task' ? 'task' : 'writer',
-    };
-    try {
-      await db.agents.put(normalized);
-      set((state) => {
-        const agents = state.agents.map((candidate) =>
-          candidate.id === normalized.id ? normalized : candidate
-        );
-        return { agents };
-      });
-    } catch (err) {
-      showError(err, 'Failed to save agent.');
-    }
-  },
-
-  deleteAgent: async (id) => {
-    const target = get().agents.find((agent) => agent.id === id);
-    if (!target || target.isDefault) return;
-    try {
-      await db.agents.delete(id);
-      set((state) => {
-        const agents = state.agents.filter((agent) => agent.id !== id);
-        const nextWriterId =
-          state.activeAgentId === id
-            ? agents.find((agent) => agent.scope === 'writer')?.id ?? DEFAULT_WRITER_AGENT.id
-            : state.activeAgentId;
-        const nextTaskId =
-          state.activeTaskAgentId === id
-            ? agents.find((agent) => agent.scope === 'task')?.id ?? DEFAULT_TASK_AGENT.id
-            : state.activeTaskAgentId;
-        return {
-          agents,
-          activeAgentId: nextWriterId,
-          activeTaskAgentId: nextTaskId,
-        };
-      });
-    } catch (err) {
-      showError(err, 'Failed to delete agent.');
-    }
-  },
-
-  setActiveAgent: (id, scope = 'writer') => {
-    if (scope === 'task') {
-      set({ activeTaskAgentId: id });
-      void secureStorage.secureSet('activeTaskAgentId', id).catch(() => undefined);
-      return;
-    }
-    set({ activeAgentId: id });
-    void secureStorage.secureSet('activeAgentId', id).catch(() => undefined);
-  },
-
-  getActiveAgent: (scope = 'writer') => {
-    const { agents, activeAgentId, activeTaskAgentId } = get();
-    const targetId = scope === 'task' ? activeTaskAgentId : activeAgentId;
-    const fallback = scope === 'task' ? DEFAULT_TASK_AGENT : DEFAULT_WRITER_AGENT;
-    return agents.find((agent) => agent.id === targetId && agent.scope === scope) ?? fallback;
-  },
-
-  getAgentsByScope: (scope) => get().agents.filter((agent) => agent.scope === scope),
-
   saveCustomProvider: async (config) => {
     const id = config.id || generateProviderId();
-    const normalized: AIProviderConfig = { ...config, id, provider: 'custom' };
+    const credential = config.apiKey;
+    const normalized: AIProviderConfig = { ...config, id, provider: 'custom', apiKey: '' };
     try {
-      await db.providerConfigs.put(normalized);
-
-      if (normalized.apiKey && normalized.apiKey.length > 0) {
-        await secureStorage.secureSet(providerApiKeyName(id), normalized.apiKey);
+      if (credential) {
+        await secureStorage.secureSet(providerApiKeyName(id), credential);
+        if ((await secureStorage.secureGet(providerApiKeyName(id))) !== credential) {
+          throw new Error('Could not verify the saved provider credential.');
+        }
       }
+      await db.providerConfigs.put(normalized);
 
       set((state) => {
         const providerConfigs = state.providerConfigs.map((candidate) =>
@@ -594,7 +460,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
   setActiveProvider: (id) => {
     set({ activeProviderId: id });
-    void secureStorage.secureSet('activeProviderId', id).catch(() => undefined);
+    void db.settings.put({ key: 'activeProviderId', value: id }).catch(() => undefined);
   },
 
   getActiveProvider: () => {
@@ -614,7 +480,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
   setAppManagementProvider: async (id) => {
     set({ appManagementProviderId: id });
     try {
-      await secureStorage.secureSet('appManagementProviderId', id ?? '');
+      await db.settings.put({ key: 'appManagementProviderId', value: id ?? '' });
     } catch (err) {
       showError(err, 'Failed to save app management provider.');
     }
@@ -715,7 +581,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       hiddenModels,
     }));
     void db.providerConfigs.update(configId, { customModels, models, selectedModel }).catch(() => undefined);
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   toggleHiddenModel: (key) => {
@@ -724,7 +590,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       ? current.filter((candidate) => candidate !== key)
       : [...current, key];
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   setModelHidden: (providerId, modelId, hidden) => {
@@ -736,7 +602,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
       ? [...current, key]
       : current.filter((k) => k !== key);
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   setProviderModelsHidden: (providerId, hidden) => {
@@ -752,13 +618,13 @@ export const useAIStore = create<AIStore>((set, get) => ({
       : withoutProviderModels;
 
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   setHiddenModels: (keys) => {
     const hiddenModels = Array.from(new Set(keys));
     set({ hiddenModels });
-    void secureStorage.secureSet('hiddenModels', JSON.stringify(hiddenModels)).catch(() => undefined);
+    void db.settings.put({ key: 'hiddenModels', value: JSON.stringify(hiddenModels) }).catch(() => undefined);
   },
 
   isModelHidden: (configId, modelSlug) => get().hiddenModels.includes(modelKey(configId, modelSlug)),
@@ -767,7 +633,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     const config = get().providerConfigs.find((p) => p.id === id);
     if (!config) return;
 
-    const hasKey = await hasSecureKey(id);
+    const hasKey = config.isActive && await hasSecureKey(id);
     const modelCount = (config.models ?? []).filter(
       (m) => !get().isModelHidden(id, m.id),
     ).length;
@@ -790,7 +656,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
     const { providerConfigs, hiddenModels } = get();
     const updates = await Promise.all(
       providerConfigs.map(async (config) => {
-        const hasKey = await hasSecureKey(config.id);
+        const hasKey = config.isActive && await hasSecureKey(config.id);
         const modelCount = (config.models ?? []).filter(
           (m) => !hiddenModels.includes(`${config.id}:${m.id}`),
         ).length;
@@ -911,7 +777,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
         throw new Error(`Could not verify the saved API key for ${current.name}.`);
       }
       await db.providerConfigs.put(connected);
-      await secureStorage.secureSet('activeProviderId', id);
+      await db.settings.put({ key: 'activeProviderId', value: id });
       set((state) => ({
         activeProviderId: id,
         providerConfigs: state.providerConfigs.map((provider) =>
@@ -1003,7 +869,7 @@ export const useAIStore = create<AIStore>((set, get) => ({
 
     try {
       await db.providerConfigs.put(newConfig);
-      await secureStorage.secureSet('activeProviderId', id);
+      await db.settings.put({ key: 'activeProviderId', value: id });
     } catch (err) {
       // Best-effort cleanup of the written secret on persistence failure
       if (trimmedKey) {
@@ -1295,23 +1161,17 @@ export const useAIStore = create<AIStore>((set, get) => ({
   saveSearchConfig: async (config) => {
     set({ searchConfig: config });
     try {
-      await db.settings.put({ key: 'exaKey', value: config.exaKey });
-      await db.settings.put({ key: 'tavilyKey', value: config.tavilyKey });
-      await db.settings.put({ key: 'firecrawlKey', value: config.firecrawlKey });
-      await db.settings.put({ key: 'braveKey', value: config.braveKey });
+      await saveSearchCredentials(config);
+      await Promise.all([
+        db.settings.delete('exaKey'),
+        db.settings.delete('tavilyKey'),
+        db.settings.delete('firecrawlKey'),
+        db.settings.delete('braveKey'),
+      ]);
       await db.settings.put({ key: 'enabled', value: config.enabled });
       await db.settings.put({ key: 'searchProvider', value: config.searchProvider });
     } catch (err) {
       showError(err, 'Failed to save search config.');
-    }
-  },
-
-  saveSystemInstructions: async (text) => {
-    set({ systemInstructions: text });
-    try {
-      await db.settings.put({ key: 'systemInstructions', value: text });
-    } catch (err) {
-      showError(err, 'Failed to save system instructions.');
     }
   },
 

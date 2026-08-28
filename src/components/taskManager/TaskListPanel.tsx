@@ -4,6 +4,7 @@ import { useTaskStore } from '../../stores/taskStore';
 import { useUIStore } from '../../stores/uiStore';
 import { TaskListItem } from './TaskListItem';
 import { QuickCreateInput } from './QuickCreateInput';
+import { AgentLaunchButton } from '../agent/AgentLaunchButton';
 import { TaskCalendarView } from './TaskCalendarView';
 import { TaskProjectView } from './TaskProjectView';
 
@@ -100,6 +101,7 @@ export function TaskListPanel() {
               <div className="task-list-clock-header">
                 {clockLabel}
               </div>
+              <AgentLaunchButton source="tasks" />
             </div>
             <div
               id="task-list-content"

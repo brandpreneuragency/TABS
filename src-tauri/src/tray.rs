@@ -15,7 +15,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 use tauri_plugin_notification::NotificationExt;
 
@@ -59,7 +59,15 @@ pub fn build(app: &tauri::AppHandle) -> tauri::Result<()> {
                     eprintln!("[TABS] notification failed: {e}");
                 }
             }
-            "quit" => app.exit(0),
+            "quit" => {
+                // Plan 25.4: emit a shutdown request. Do not call app.exit(0).
+                show_main(app);
+                if let Some(request_id) = crate::commands::lifecycle::begin_shutdown_request(app) {
+                    if let Err(error) = app.emit("tabs://shutdown-requested", request_id) {
+                        eprintln!("[TABS] failed to emit tabs://shutdown-requested: {error}");
+                    }
+                }
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {

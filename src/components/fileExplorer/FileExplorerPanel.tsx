@@ -9,6 +9,7 @@ import { useWorkspaceStore, type TreeNode as TreeNodeType } from '../../stores/w
 import { useUIStore } from '../../stores/uiStore';
 import { TreeNode } from './TreeNode';
 import { FileTreeTabs } from './FileTreeTabs';
+import { AgentLaunchButton } from '../agent/AgentLaunchButton';
 
 const POLL_INTERVAL_MS = 10_000;
 const SEARCH_RESULT_LIMIT = 50;
@@ -208,6 +209,7 @@ export function FileExplorerPanel() {
         <div className="shrink-0" style={{ height: 'fit-content', paddingLeft: 0, paddingRight: 0 }}>
           <FileTreeTabs />
         </div>
+        <AgentLaunchButton source="documents" />
 
         {rootNode?.children && (
           <div

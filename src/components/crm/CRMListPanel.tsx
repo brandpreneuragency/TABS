@@ -6,6 +6,7 @@ import { DashboardSavedViews } from './lists/DashboardSavedViews';
 import { LeadList } from './lists/LeadList';
 import { SettingsNav } from './lists/SettingsNav';
 import { useCrmSettingsTab } from './pages/CRMSettingsPage';
+import { AgentLaunchButton } from '../agent/AgentLaunchButton';
 
 const CRM_LIST_TITLES: Record<CRMPage, string> = {
   dashboard: 'Dashboard',
@@ -82,6 +83,7 @@ export function CRMListPanel() {
         ) : (
           <span className="crm-list-footer-hint subtle">{CRM_LIST_TITLES[activeCRMPage]}</span>
         )}
+        <AgentLaunchButton source="crm" />
       </div>
     </div>
   );

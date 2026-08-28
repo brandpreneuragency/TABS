@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type { Project } from '../types';
 import { db } from '../services/db';
+import { localTaskOperation, taskService } from '../services/tasks/taskService';
 import { useUIStore } from './uiStore';
 
 const PROJECT_COLORS = [
@@ -49,7 +50,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
           color: PROJECT_COLORS[0],
           createdAt: Date.now(),
         };
-        await db.projects.add(generalProject);
+        await taskService.createProjectProjection(generalProject, localTaskOperation('create-project'));
         set({ projects: [generalProject], isLoaded: true });
         return;
       }
@@ -68,7 +69,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const now = Date.now();
     const project: Project = { id, name: trimmed, color, createdAt: now };
     try {
-      await db.projects.add(project);
+      await taskService.createProjectProjection(project, localTaskOperation('create-project'));
       set((s) => ({ projects: [...s.projects, project] }));
       return project;
     } catch (err) {
@@ -83,7 +84,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       projects: s.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
     }));
     try {
-      await db.projects.update(id, updates);
+      await taskService.updateProjectProjection({
+        ...localTaskOperation('update-project'),
+        projectId: id,
+        ...updates,
+      });
     } catch (err) {
       if (previous) {
         set((s) => ({
